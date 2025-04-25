@@ -1,0 +1,14 @@
+# Daily CIO Report – ${report_date}
+
+Recent portfolio values:
+${equity_table}
+
+Today’s trades & costs:
+${trades_table}
+
+Write a ~250-word narrative covering:
+• Risk vs IPS targets
+• Intraday trade commentary & cost summary
+• Key metrics (return, Sharpe, Sortino, max drawdown)
+
+Return plain text only.
