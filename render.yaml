@@ -1,8 +1,6 @@
 services:
   - name: tradesmith-worker
     type: worker
-    instanceType: standard        # 1 CPU / 2 GB
-    disk: tradesmith-data         # mounts /data
     envVars:
       - key: OPENAI_API_KEY
         sync: false
