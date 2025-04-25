@@ -1,6 +1,6 @@
 services:
-  - type: cron
-    name: tradesmith-intraday
+  - name: tradesmith-intraday
+    type: cron
     schedule: "*/10 * * * 1-5"
     envVars:
       - key: OPENAI_API_KEY
@@ -9,20 +9,23 @@ services:
         value: YOUR_PLACEHOLDER
       - key: NEWS_API_KEY
         value: YOUR_PLACEHOLDER
+    dockerfilePath: ./Dockerfile
     startCommand: "python run_intraday.py"
 
-  - type: cron
-    name: tradesmith-daily-report
+  - name: tradesmith-daily-report
+    type: cron
     schedule: "0 20 * * 1-5"
     envVars:
       - key: OPENAI_API_KEY
         value: YOUR_PLACEHOLDER
+    dockerfilePath: ./Dockerfile
     startCommand: "python run_report.py"
 
-  - type: cron
-    name: tradesmith-weekly-report
+  - name: tradesmith-weekly-report
+    type: cron
     schedule: "0 20 * * FRI"
     envVars:
       - key: OPENAI_API_KEY
         value: YOUR_PLACEHOLDER
+    dockerfilePath: ./Dockerfile
     startCommand: "python run_weekly.py"
