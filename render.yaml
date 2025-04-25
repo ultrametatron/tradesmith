@@ -2,7 +2,6 @@ services:
   - name: tradesmith-intraday
     type: cron
     schedule: "*/10 * * * 1-5"
-    dockerfilePath: ./Dockerfile
     startCommand: "python run_intraday.py"
     envVars:
       - key: OPENAI_API_KEY
@@ -15,7 +14,6 @@ services:
   - name: tradesmith-daily-report
     type: cron
     schedule: "0 20 * * 1-5"
-    dockerfilePath: ./Dockerfile
     startCommand: "python run_report.py"
     envVars:
       - key: OPENAI_API_KEY
@@ -24,7 +22,6 @@ services:
   - name: tradesmith-weekly-report
     type: cron
     schedule: "0 20 * * FRI"
-    dockerfilePath: ./Dockerfile
     startCommand: "python run_weekly.py"
     envVars:
       - key: OPENAI_API_KEY
