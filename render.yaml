@@ -2,18 +2,14 @@ services:
   - name: tradesmith-intraday
     type: cron
     runtime: docker
-    # every 10 min from 08:00–12:50, 13:30–20:00, and 20:00–00:00 UTC, Mon–Fri
-    schedule: |
-      0/10 8-12 * * 1-5,
-      30/10 13 * * 1-5,
-      */10 14-19 * * 1-5,
-      0/10 20 * * 1-5,
-      */10 21-23 * * 1-5
+    schedule: "*/10 * * * 1-5"
     envVars:
       - key: OPENAI_API_KEY
         value: YOUR_OPENAI_KEY
       - key: FMP_API_KEY
         value: YOUR_FMP_KEY
+
+  # (daily-report and weekly-report unchanged)
 
   - name: tradesmith-daily-report
     type: cron
