@@ -1,0 +1,14 @@
+# Investment Policy Statement
+• Target return: 12% p.a. (β≈0.80; Sharpe > 0.70; Sortino > 0.75)
+• Sector ≤ 25%; global equities & options allowed; no margin
+• Weekly turnover cap: ${weekly_cap}%
+• Weekly trading-cost budget: ${weekly_budget} AUD
+
+# Top-250 Candidates
+Symbol,Price,Δ%,Volume,MA50,MA200,β,P/E,P/B,YTDReturn
+${table}
+
+# Sentiment
+Ten most recent headlines per ticker are pre-scored locally (DistilBERT).
+
+Return **only** JSON via function `process_adjustments`.
