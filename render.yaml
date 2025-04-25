@@ -1,16 +1,19 @@
 services:
   - name: tradesmith-worker
     type: worker
+    runtime: python
     plan: standard
     disk:
       name: tradesmith-data
       mountPath: /data
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python worker.py"
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: FMP_API_KEY
         sync: false
-    startCommand: "run python worker.py"
+
 
   - name: tradesmith-daily-metrics
     type: cron
