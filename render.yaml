@@ -5,7 +5,7 @@ disks:
 
 services:
   - name: tradesmith-worker
-    type: service
+    type: webservice
     instanceType: standard        # 1 CPU / 2 GB
     disk: tradesmith-data         # mounts /data
     envVars:
