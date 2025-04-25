@@ -8,7 +8,10 @@ services:
         fromSecret: OPENAI_API_KEY
       - key: IEX_TOKEN
         fromSecret: IEX_TOKEN
+      - key: NEWS_API_KEY        # <— add this
+        fromSecret: NEWS_API_KEY
     command: ["python","run_intraday.py"]
+  
 
   - type: cron
     name: tradesmith-daily-report
@@ -27,3 +30,5 @@ services:
       - key: OPENAI_API_KEY
         fromSecret: OPENAI_API_KEY
     command: ["python","run_weekly.py"]
+
+    
