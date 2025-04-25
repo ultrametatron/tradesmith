@@ -94,3 +94,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# run_intraday.py (near bottom of main())
+log(df)
+
+# Heartbeat: show top 3 rows of today’s snapshot
+print("SMOKE TEST — top 3 positions after run:")
+print(df.sort_values("Value", ascending=False).head(3).to_csv(index=False))
