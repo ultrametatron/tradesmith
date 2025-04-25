@@ -58,7 +58,7 @@ def fetch_headlines(symbol: str, n: int = 10) -> list:
 
 def main():
     # 1) Universe generation: write top 5,000 tickers to CSV
-    symbols = dynamic_universe_all(20000)
+    symbols = dynamic_universe_all(5000)
     pd.DataFrame({"Symbol": symbols}).to_csv("state/master_tickers.csv", index=False)
 
     # 2) Update market & company data from IEX
