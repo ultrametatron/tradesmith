@@ -2,7 +2,7 @@ import os
 import json
 from openai import OpenAI
 
-# Instantiate the new client
+# Instantiate the new v1.0 client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Load the function-call schema JSON directly
@@ -20,6 +20,7 @@ MODEL_REPORT = "gpt-4.1-mini"
 def ask_trades(prompt: str) -> dict:
     """
     Call o4-mini to get trade adjustments via the 'process_adjustments' function.
+    Uses default temperature (1).
     """
     resp = client.chat.completions.create(
         model=MODEL_TRADES,
@@ -33,8 +34,7 @@ def ask_trades(prompt: str) -> dict:
         tool_choice={
             "type": "function",
             "function": {"name": adjustments_schema["name"]}
-        },
-        temperature=0
+        }
     )
     fc = resp.choices[0].message.function_call
     return json.loads(fc.arguments)
@@ -43,10 +43,10 @@ def ask_trades(prompt: str) -> dict:
 def ask_report(prompt: str) -> str:
     """
     Call gpt-4.1-mini to get a narrative report.
+    Uses default temperature (1).
     """
     resp = client.chat.completions.create(
         model=MODEL_REPORT,
-        messages=[{"role": "system", "content": prompt}],
-        temperature=0
+        messages=[{"role": "system", "content": prompt}]
     )
     return resp.choices[0].message.content
