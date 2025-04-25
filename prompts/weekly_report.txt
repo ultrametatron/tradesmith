@@ -1,0 +1,11 @@
+# Weekly CIO Report – ${report_date}
+
+1. Weekly performance summary (return, Sharpe, Sortino, max drawdown):
+${weekly_kpis}
+
+2. Major trades & costs:
+${weekly_trades}
+
+3. Commentary on signal efficacy, risk events, and outlook.
+
+Write a ~400-word memo. Return plain text only.
