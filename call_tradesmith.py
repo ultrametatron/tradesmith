@@ -14,22 +14,24 @@ MODEL_TRADES = "o4-mini"
 MODEL_REPORT = "gpt-4.1-mini"
 
 def ask_trades(prompt: str) -> dict:
-    """
-    Call o4-mini to get trade adjustments, forcing the 'process_adjustments' function.
-    """
     resp = client.chat.completions.create(
         model=MODEL_TRADES,
-        messages=[{"role": "system", "content": prompt}],
-        tools=[adjustments_schema],  
+        messages=[{"role":"system","content":prompt}],
+        tools=[
+            {
+              "type": "function",
+              "function": adjustments_schema
+            }
+        ],
         tool_choice={
             "type": "function",
-            "function": {"name": "process_adjustments"}
+            "function": {"name": adjustments_schema["name"]}
         },
         temperature=0
     )
-    # In v1 the function call still appears under .message.function_call
     fc = resp.choices[0].message.function_call
     return json.loads(fc.arguments)
+
 
 def ask_report(prompt: str) -> str:
     """
