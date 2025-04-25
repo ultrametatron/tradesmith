@@ -2,7 +2,7 @@ services:
   - name: tradesmith-worker
     type: worker
     plan: standard
-    disk: tradesmith-data
+    disk:
       name: tradesmith-data
       mountpath: /data
     envVars:
