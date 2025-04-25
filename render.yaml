@@ -2,27 +2,38 @@ services:
   - name: tradesmith-intraday
     type: cron
     runtime: docker
-    schedule: "*/10 * * * 1-5"
+    timeZone: "America/New_York"
+    # Pre-market 04:00–08:50, market 09:30–16:00, post-market 16:00–20:00 ET, every 10 min
+    schedule: >
+      0/10 4-8 * * 1-5,
+      0,10,20 9 * * 1-5,
+      30/10 9 * * 1-5,
+      */10 10-15 * * 1-5,
+      0/10 16 * * 1-5,
+      */10 17-19 * * 1-5,
+      0 20 * * 1-5
     envVars:
       - key: OPENAI_API_KEY
-        value: YOUR_PLACEHOLDER
+        value: YOUR_OPENAI_KEY
       - key: FMP_API_KEY
-        value: YOUR_PLACEHOLDER
+        value: YOUR_FMP_KEY
       - key: NEWS_API_KEY
-        value: YOUR_PLACEHOLDER
+        value: YOUR_NEWS_KEY
 
   - name: tradesmith-daily-report
     type: cron
     runtime: docker
+    timeZone: "America/New_York"
     schedule: "0 20 * * 1-5"
     envVars:
       - key: OPENAI_API_KEY
-        value: YOUR_PLACEHOLDER
+        value: YOUR_OPENAI_KEY
 
   - name: tradesmith-weekly-report
     type: cron
     runtime: docker
+    timeZone: "America/New_York"
     schedule: "0 20 * * FRI"
     envVars:
       - key: OPENAI_API_KEY
-        value: YOUR_PLACEHOLDER
+        value: YOUR_OPENAI_KEY
