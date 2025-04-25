@@ -2,33 +2,33 @@ services:
   - type: cron
     name: tradesmith-intraday
     schedule: "*/10 * * * 1-5"
+    plan: starter
     dockerfilePath: ./Dockerfile
+    startCommand: "python run_intraday.py"
     envVars:
       - key: OPENAI_API_KEY
         fromSecret: OPENAI_API_KEY
+      - key: FMP_API_KEY
+        fromSecret: FMP_API_KEY
       - key: NEWS_API_KEY
         fromSecret: NEWS_API_KEY
-      - key: FMP_API_KEY           
-        fromSecret: FMP_API_KEY
-    command: ["python","run_intraday.py"]
-  
 
   - type: cron
     name: tradesmith-daily-report
     schedule: "0 20 * * 1-5"
+    plan: starter
     dockerfilePath: ./Dockerfile
+    startCommand: "python run_report.py"
     envVars:
       - key: OPENAI_API_KEY
         fromSecret: OPENAI_API_KEY
-    command: ["python","run_report.py"]
 
   - type: cron
     name: tradesmith-weekly-report
     schedule: "0 20 * * FRI"
+    plan: starter
     dockerfilePath: ./Dockerfile
+    startCommand: "python run_weekly.py"
     envVars:
       - key: OPENAI_API_KEY
         fromSecret: OPENAI_API_KEY
-    command: ["python","run_weekly.py"]
-
-    
