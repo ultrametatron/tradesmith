@@ -6,10 +6,10 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         fromSecret: OPENAI_API_KEY
-      - key: IEX_TOKEN
-        fromSecret: IEX_TOKEN
-      - key: NEWS_API_KEY        # <— add this
+      - key: NEWS_API_KEY
         fromSecret: NEWS_API_KEY
+      - key: FMP_API_KEY           
+        fromSecret: FMP_API_KEY
     command: ["python","run_intraday.py"]
   
 
