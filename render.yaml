@@ -1,6 +1,10 @@
 services:
   - name: tradesmith-worker
     type: worker
+    plan: standard
+    disk: tradesmith-data
+      name: tradesmith-data
+      mountpath: /data
     envVars:
       - key: OPENAI_API_KEY
         sync: false
