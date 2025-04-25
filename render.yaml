@@ -1,13 +1,19 @@
+disks:
+  - name: tradesmith-data
+    sizeGB: 5
+    mountPath: /data
+
 services:
-  - name: tradesmith-intraday
-    type: cron
-    runtime: docker
-    schedule: "*/15 * * * 1-5"
+  - name: tradesmith-worker
+    type: service
+    instanceType: standard        # 1 CPU / 2 GB
+    disk: tradesmith-data         # mounts /data
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: FMP_API_KEY
         sync: false
+    startCommand: "python worker.py"
 
   - name: tradesmith-daily-metrics
     type: cron
