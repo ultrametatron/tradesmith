@@ -1,0 +1,29 @@
+services:
+  - type: cron
+    name: tradesmith-intraday
+    schedule: "*/10 * * * 1-5"
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: OPENAI_API_KEY
+        fromSecret: OPENAI_API_KEY
+      - key: IEX_TOKEN
+        fromSecret: IEX_TOKEN
+    command: ["python","run_intraday.py"]
+
+  - type: cron
+    name: tradesmith-daily-report
+    schedule: "0 20 * * 1-5"
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: OPENAI_API_KEY
+        fromSecret: OPENAI_API_KEY
+    command: ["python","run_report.py"]
+
+  - type: cron
+    name: tradesmith-weekly-report
+    schedule: "0 20 * * FRI"
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: OPENAI_API_KEY
+        fromSecret: OPENAI_API_KEY
+    command: ["python","run_weekly.py"]
