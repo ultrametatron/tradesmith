@@ -20,7 +20,7 @@ MODEL_REPORT = "gpt-4.1-mini"
 def ask_trades(prompt: str) -> dict:
     """
     Call o4-mini to get trade adjustments via the 'process_adjustments' function.
-    Uses default temperature (1).
+    Handles the case where no function_call is returned.
     """
     resp = client.chat.completions.create(
         model=MODEL_TRADES,
@@ -35,15 +35,23 @@ def ask_trades(prompt: str) -> dict:
             "type": "function",
             "function": {"name": adjustments_schema["name"]}
         }
+        # no temperature param—defaults to 1
     )
-    fc = resp.choices[0].message.function_call
-    return json.loads(fc.arguments)
+
+    msg = resp.choices[0].message
+
+    # If the model didn’t choose to call the function, return empty adjustments
+    if msg.function_call is None:
+        print("⚠️ No function_call in response; returning empty adjustments.")
+        return {}
+
+    # Otherwise parse the JSON arguments
+    return json.loads(msg.function_call.arguments)
 
 
 def ask_report(prompt: str) -> str:
     """
     Call gpt-4.1-mini to get a narrative report.
-    Uses default temperature (1).
     """
     resp = client.chat.completions.create(
         model=MODEL_REPORT,
