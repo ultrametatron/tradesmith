@@ -2,11 +2,15 @@ import os
 import json
 from openai import OpenAI
 
-# instantiate the new client
+# Instantiate the new client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# load the function‐call schema JSON directly
-_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schemas", "adjustments.json")
+# Load the function-call schema JSON directly
+_SCHEMA_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "schemas",
+    "adjustments.json"
+)
 with open(_SCHEMA_PATH, "r") as f:
     adjustments_schema = json.load(f)
 
@@ -14,13 +18,16 @@ MODEL_TRADES = "o4-mini"
 MODEL_REPORT = "gpt-4.1-mini"
 
 def ask_trades(prompt: str) -> dict:
+    """
+    Call o4-mini to get trade adjustments via the 'process_adjustments' function.
+    """
     resp = client.chat.completions.create(
         model=MODEL_TRADES,
-        messages=[{"role":"system","content":prompt}],
+        messages=[{"role": "system", "content": prompt}],
         tools=[
             {
-              "type": "function",
-              "function": adjustments_schema
+                "type": "function",
+                "function": adjustments_schema
             }
         ],
         tool_choice={
