@@ -53,6 +53,7 @@ Ensure the following files exist under `state/`:
 On Render or locally, define:
 - `OPENAI_API_KEY`
 - `IEX_TOKEN`
+- NEWS_API_KEY — for fetching live headlines via NewsAPI
 
 ### 5. Deploy to Render
 All tasks (intraday run, daily report, weekly memo) are configured in `render.yaml`.
