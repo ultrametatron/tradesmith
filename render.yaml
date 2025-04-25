@@ -1,6 +1,6 @@
 services:
   - name: tradesmith-worker
-    type: worker
+    type: background
     plan: standard
     disk:
       name: tradesmith-data
