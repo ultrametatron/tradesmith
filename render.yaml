@@ -2,29 +2,39 @@ services:
   - name: tradesmith-intraday
     type: cron
     runtime: docker
+    # every 10 minutes Mon–Fri (UTC); in-code guard enforces ET pre/regular/post-market windows
     schedule: "*/10 * * * 1-5"
     envVars:
       - key: OPENAI_API_KEY
-        value: YOUR_OPENAI_KEY
+        fromSecret: OPENAI_API_KEY
       - key: FMP_API_KEY
-        value: YOUR_FMP_KEY
+        fromSecret: FMP_API_KEY
+      - key: NEWS_API_KEY
+        fromSecret: NEWS_API_KEY
 
-  # (daily-report and weekly-report unchanged)
+  - name: tradesmith-daily-metrics
+    type: cron
+    runtime: docker
+    # once daily at 03:00 ET → 07:00 UTC
+    schedule: "0 7 * * 1-5"
+    envVars:
+      - key: FMP_API_KEY
+        fromSecret: FMP_API_KEY
 
   - name: tradesmith-daily-report
     type: cron
     runtime: docker
-    # 20:00 ET → 00:00 UTC next day
+    # once daily at 20:00 ET → 00:00 UTC next day (Tue–Sat)
     schedule: "0 0 * * 2-6"
     envVars:
       - key: OPENAI_API_KEY
-        value: YOUR_OPENAI_KEY
+        fromSecret: OPENAI_API_KEY
 
   - name: tradesmith-weekly-report
     type: cron
     runtime: docker
-    # Fridays 20:00 ET → Saturdays 00:00 UTC
+    # once weekly at Friday 20:00 ET → Saturday 00:00 UTC
     schedule: "0 0 * * SAT"
     envVars:
       - key: OPENAI_API_KEY
-        value: YOUR_OPENAI_KEY
+        fromSecret: OPENAI_API_KEY
