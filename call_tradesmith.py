@@ -5,35 +5,35 @@ from openai import OpenAI
 # instantiate the new client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# load your function-call schema JSON directly
+# load the function‐call schema JSON directly
 _SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schemas", "adjustments.json")
 with open(_SCHEMA_PATH, "r") as f:
     adjustments_schema = json.load(f)
 
-# model names
 MODEL_TRADES = "o4-mini"
 MODEL_REPORT = "gpt-4.1-mini"
 
 def ask_trades(prompt: str) -> dict:
     """
-    Use the new v1 client to call the trades function.
-    Returns the parsed JSON arguments.
+    Call o4-mini to get trade adjustments, forcing the 'process_adjustments' function.
     """
     resp = client.chat.completions.create(
         model=MODEL_TRADES,
         messages=[{"role": "system", "content": prompt}],
-        functions=[adjustments_schema],
-        function_call="process_adjustments",
+        tools=[adjustments_schema],  
+        tool_choice={
+            "type": "function",
+            "function": {"name": "process_adjustments"}
+        },
         temperature=0
     )
-    # extract the function_call arguments
+    # In v1 the function call still appears under .message.function_call
     fc = resp.choices[0].message.function_call
     return json.loads(fc.arguments)
 
 def ask_report(prompt: str) -> str:
     """
-    Use the new v1 client to generate narrative reports.
-    Returns the assistant’s reply content.
+    Call gpt-4.1-mini to get a narrative report.
     """
     resp = client.chat.completions.create(
         model=MODEL_REPORT,
