@@ -1,55 +1,104 @@
 """
-Fetch numeric & categorical fields in batches from IEX.
+update_master_prices.py
+
+Fetch real-time quotes and categorical/fundamental data in batches
+from Financial Modeling Prep (FMP). Writes `state/master_prices.csv`.
 """
-import pandas as pd, requests, os, datetime, time
 
-IEX_TOKEN = os.getenv("IEX_TOKEN")
-BATCH = 100
+import os
+import time
+import pandas as pd
+import requests
+import datetime
 
-def _fetch_batch(symbols):
-    url = "https://cloud.iexapis.com/stable/stock/market/batch"
-    params = {
-        "symbols": ",".join(symbols),
-        "types":   "quote,company",
-        "token":   IEX_TOKEN
-    }
-    try:
-        resp = requests.get(url, params=params, timeout=10).json()
-    except Exception as e:
-        raise RuntimeError("IEX batch request failed") from e
+# FMP configuration
+FMP_KEY = os.getenv("FMP_API_KEY")
+BASE    = "https://financialmodelingprep.com/api/v3"
+BATCH   = 500   # keep at 500 symbols per request for efficiency
 
+def fetch_prices(symbols):
+    """
+    Batch real-time quotes via FMP /quote endpoint.
+    Returns list of dicts with keys: Symbol, Price, ChangePct, Volume, Timestamp.
+    """
+    if not symbols:
+        return []
+    sym_list = ",".join(symbols)
+    url = f"{BASE}/quote/{sym_list}"
+    resp = requests.get(url, params={"apikey": FMP_KEY}, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()  # list of {symbol, price, change, ...}
     rows = []
-    for sym, data in resp.items():
-        q, c = data["quote"], data["company"]
+    for d in data:
         rows.append({
-            "Symbol":        sym,
-            "Price":         q["latestPrice"],
-            "Timestamp":     datetime.datetime.utcnow(),
-            "ChangePct":     q["changePercent"],
-            "Volume":        q["volume"],
-            "MA50":          q.get("iexClose"),
-            "MA200":         q.get("week52High"),
-            "Beta":          q.get("beta"),
-            "PERatio":       q.get("peRatio"),
-            "PBRatio":       (q.get("peRatio") or 0)/2,
-            "YTDChange":     q.get("ytdChange"),
-            "DividendYield": q.get("dividendYield"),
-            "Sector":        c.get("sector"),
-            "Industry":      c.get("industry"),
-            "Country":       c.get("country"),
-            "MarketCap":     q.get("marketCap")
+            "Symbol":     d.get("symbol"),
+            "Price":      d.get("price"),
+            "ChangePct":  d.get("change") / d.get("previousClose") if d.get("previousClose") else 0,
+            "Volume":     d.get("volume"),
+            "Timestamp":  datetime.datetime.utcnow()
+        })
+    return rows
+
+def fetch_profiles(symbols):
+    """
+    Batch company profiles via FMP /profile endpoint.
+    Returns list of dicts with keys: Symbol, Sector, Industry, Country, MarketCap, Beta, PERatio, PBRatio.
+    """
+    if not symbols:
+        return []
+    sym_list = ",".join(symbols)
+    url = f"{BASE}/profile/{sym_list}"
+    resp = requests.get(url, params={"apikey": FMP_KEY}, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()  # list of profile dicts
+    rows = []
+    for d in data:
+        rows.append({
+            "Symbol":     d.get("symbol"),
+            "Sector":     d.get("sector"),
+            "Industry":   d.get("industry"),
+            "Country":    d.get("country"),
+            "MarketCap":  d.get("mktCap"),
+            "Beta":       d.get("beta"),
+            "PERatio":    d.get("priceEarningsRatio"),
+            "PBRatio":    d.get("priceToBookRatio")
         })
     return rows
 
 def update_master():
-    # Read universe and fetch in batches
+    """
+    1. Read universe from state/master_tickers.csv
+    2. For each batch of BATCH symbols:
+       - fetch_prices
+       - fetch_profiles
+    3. Merge price & profile tables on Symbol
+    4. Save to state/master_prices.csv
+    """
     tickers = pd.read_csv("state/master_tickers.csv").Symbol.tolist()
-    all_rows = []
+    price_rows, profile_rows = [], []
+
+    # Fetch price data in batches
     for i in range(0, len(tickers), BATCH):
-        batch = tickers[i:i+BATCH]
-        all_rows.extend(_fetch_batch(batch))
-        time.sleep(0.1)  # avoid rate limits
-    pd.DataFrame(all_rows).to_csv("state/master_prices.csv", index=False)
+        batch = tickers[i : i + BATCH]
+        price_rows.extend(fetch_prices(batch))
+        time.sleep(0.2)  # stay well under rate limit
+
+    # Fetch profile data in same batches
+    for i in range(0, len(tickers), BATCH):
+        batch = tickers[i : i + BATCH]
+        profile_rows.extend(fetch_profiles(batch))
+        time.sleep(0.2)
+
+    # Build DataFrames and merge
+    df_price   = pd.DataFrame(price_rows)
+    df_profile = pd.DataFrame(profile_rows)
+    df_master  = df_price.merge(df_profile, on="Symbol", how="left")
+
+    # Optional: compute any additional metrics here (MA50/MA200/YTD etc.)
+
+    # Persist for downstream steps
+    df_master.to_csv("state/master_prices.csv", index=False)
+    print(f"Updated master_prices.csv with {len(df_master)} rows.")
 
 if __name__ == "__main__":
     update_master()
