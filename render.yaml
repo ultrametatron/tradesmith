@@ -2,7 +2,7 @@ services:
   - name: tradesmith-intraday
     type: cron
     runtime: docker
-    timeZone: "America/New_York"
+    timezone: "America/New_York"    # <-- lower-case t here
     # Pre-market 04:00–08:50, market 09:30–16:00, post-market 16:00–20:00 ET, every 10 min
     schedule: >
       0/10 4-8 * * 1-5,
@@ -23,7 +23,7 @@ services:
   - name: tradesmith-daily-report
     type: cron
     runtime: docker
-    timeZone: "America/New_York"
+    timezone: "America/New_York"
     schedule: "0 20 * * 1-5"
     envVars:
       - key: OPENAI_API_KEY
@@ -32,7 +32,7 @@ services:
   - name: tradesmith-weekly-report
     type: cron
     runtime: docker
-    timeZone: "America/New_York"
+    timezone: "America/New_York"
     schedule: "0 20 * * FRI"
     envVars:
       - key: OPENAI_API_KEY
