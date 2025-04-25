@@ -1,5 +1,5 @@
 pandas
-numpy- openai>=0.28.0
+numpy
 openai>=1.0.0
 requests
 transformers
