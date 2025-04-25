@@ -3,7 +3,6 @@ services:
     type: cron
     runtime: docker
     schedule: "*/10 * * * 1-5"
-    startCommand: "python run_intraday.py"
     envVars:
       - key: OPENAI_API_KEY
         value: YOUR_PLACEHOLDER
@@ -16,7 +15,6 @@ services:
     type: cron
     runtime: docker
     schedule: "0 20 * * 1-5"
-    startCommand: "python run_report.py"
     envVars:
       - key: OPENAI_API_KEY
         value: YOUR_PLACEHOLDER
@@ -25,7 +23,6 @@ services:
     type: cron
     runtime: docker
     schedule: "0 20 * * FRI"
-    startCommand: "python run_weekly.py"
     envVars:
       - key: OPENAI_API_KEY
         value: YOUR_PLACEHOLDER
