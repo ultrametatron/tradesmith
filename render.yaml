@@ -1,6 +1,6 @@
 services:
   - name: tradesmith-worker
-    type: background
+    type: worker
     plan: standard
     disk:
       name: tradesmith-data
@@ -10,7 +10,7 @@ services:
         sync: false
       - key: FMP_API_KEY
         sync: false
-    startCommand: "python worker.py"
+    startCommand: "run python worker.py"
 
   - name: tradesmith-daily-metrics
     type: cron
