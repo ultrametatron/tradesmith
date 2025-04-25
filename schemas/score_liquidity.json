@@ -1,0 +1,12 @@
+{
+  "name": "score_liquidity",
+  "description": "Return liquidity score 0–1 given volume and avg_volume",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "volume":     { "type": "number" },
+      "avg_volume": { "type": "number" }
+    },
+    "required": ["volume","avg_volume"]
+  }
+}
