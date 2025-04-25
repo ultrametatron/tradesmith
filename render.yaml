@@ -1,6 +1,7 @@
 services:
   - name: tradesmith-intraday
     type: cron
+    runtime: docker
     schedule: "*/10 * * * 1-5"
     startCommand: "python run_intraday.py"
     envVars:
@@ -13,6 +14,7 @@ services:
 
   - name: tradesmith-daily-report
     type: cron
+    runtime: docker
     schedule: "0 20 * * 1-5"
     startCommand: "python run_report.py"
     envVars:
@@ -21,6 +23,7 @@ services:
 
   - name: tradesmith-weekly-report
     type: cron
+    runtime: docker
     schedule: "0 20 * * FRI"
     startCommand: "python run_weekly.py"
     envVars:
