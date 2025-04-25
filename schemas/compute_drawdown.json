@@ -1,0 +1,14 @@
+{
+  "name": "compute_drawdown",
+  "description": "Calculate maximum drawdown (0–1) from a series of values",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "values": {
+        "type": "array",
+        "items": { "type": "number" }
+      }
+    },
+    "required": ["values"]
+  }
+}
