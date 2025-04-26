@@ -15,6 +15,14 @@ services:
         sync: false
 
 
+  - name: tradesmith-daily-metrics
+    type: cron
+    runtime: docker
+    schedule: "0 7 * * 1-5"
+    envVars:
+      - key: FMP_API_KEY
+        sync: false
+
   - name: tradesmith-daily-report
     type: cron
     runtime: docker
@@ -33,14 +41,6 @@ services:
       - key: DELIVERY_EMAIL
         sync: false
     startCommand: "python run_daily_delivery.py"
-
-  - name: tradesmith-daily-report
-    type: cron
-    runtime: docker
-    schedule: "0 0 * * 2-6"
-    envVars:
-      - key: OPENAI_API_KEY
-        sync: false
 
   - name: tradesmith-weekly-report
     type: cron
