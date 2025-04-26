@@ -1,5 +1,5 @@
-openai>=1.0.0
 pandas
+openai>=1.0.0
 requests
 python-dateutil
 pytz
