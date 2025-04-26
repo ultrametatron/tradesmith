@@ -2,33 +2,41 @@
 import os
 import shutil
 import logging
+import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from pytz import timezone
-import datetime
-import sys
 
 # ── Paths ───────────────────────────────────────────────────────────────────────
-HERE      = os.path.dirname(__file__)
-SEED_DIR  = os.path.join(HERE, "seed")
-STATE_DIR = "/data/state"
+HERE            = os.path.dirname(__file__)
+CODE_STATE_DIR  = os.path.join(HERE, "state")       # your repo-tracked folder
+DISK_STATE_DIR  = "/data/state"                     # your Render Disk mount
 # ────────────────────────────────────────────────────────────────────────────────
 
 def bootstrap_state():
     """
-    Copy seed CSVs from /app/seed into /data/state if they don't already exist.
+    Copy all files from repo's state/ folder into the persistent disk at /data/state
+    if they don't already exist there.
     """
-    os.makedirs(STATE_DIR, exist_ok=True)
-    for fname in os.listdir(SEED_DIR):
-        src = os.path.join(SEED_DIR, fname)
-        dst = os.path.join(STATE_DIR, fname)
+    os.makedirs(DISK_STATE_DIR, exist_ok=True)
+
+    if not os.path.isdir(CODE_STATE_DIR):
+        logging.warning(f"Repo state dir not found at {CODE_STATE_DIR}; skipping bootstrap.")
+        return
+
+    for fname in os.listdir(CODE_STATE_DIR):
+        src = os.path.join(CODE_STATE_DIR, fname)
+        dst = os.path.join(DISK_STATE_DIR, fname)
         if not os.path.exists(dst):
             logging.info(f"Seeding {dst} from {src}")
             shutil.copy(src, dst)
 
 def in_us_trading_hours() -> bool:
     """
-    True if now (NY time) is in pre-market 4:00–9:29, market 9:30–16:00, or
-    post-market 16:00–20:00, Mon–Fri.
+    Return True if now (Eastern Time) is within:
+      - Pre-market:   04:00–09:29
+      - Regular:      09:30–16:00
+      - Post-market:  16:00–20:00
+    on a Monday–Friday.
     """
     tz_ny = timezone("America/New_York")
     now   = datetime.datetime.now(tz_ny)
@@ -41,12 +49,12 @@ def in_us_trading_hours() -> bool:
     return pre or reg or post
 
 def main():
-    # 0) Only run during US trading windows
+    # 0) Only proceed if within US trading hours
     if not in_us_trading_hours():
         logging.info("Outside US trading hours; skipping run.")
         return
 
-    # 1) Import and invoke your existing intraday logic
+    # 1) Import and run your intraday logic
     try:
         from run_intraday import main as intraday_main
     except ImportError as e:
@@ -64,13 +72,13 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s %(message)s"
     )
 
-    # 1) Bootstrap seeds → persistent disk
+    # 1) Bootstrap seed files into persistent disk
     bootstrap_state()
 
-    # 2) One immediate run
+    # 2) Run once immediately on startup
     main()
 
-    # 3) Schedule every 15 min, Mon–Fri, ET 04:00–19:59
+    # 3) Schedule recurring runs every 15 minutes, Mon–Fri, ET 04:00–19:59
     scheduler = BlockingScheduler(timezone="America/New_York")
     scheduler.add_job(
         main,
