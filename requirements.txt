@@ -6,4 +6,4 @@ pytz
 transformers
 torch
 huggingface-hub
-apscheduler
+apscheduler>=3.9.0
