@@ -1,9 +1,20 @@
-pandas
+# OpenAI client
 openai>=1.0.0
-requests
-python-dateutil
-pytz
-transformers
-torch
-huggingface-hub
-apscheduler>=3.9.0
+
+# HTTP requests
+requests>=2.30.0
+
+# Data handling
+pandas>=2.0.0
+
+# Date/time utilities
+python-dateutil>=2.9.0
+pytz>=2020.1
+
+# Scheduling
+apscheduler>=3.9.1
+
+# (Optional) If you later enable sentiment modules:
+transformers>=4.51.3
+torch>=2.7.0
+huggingface-hub>=0.30.2
