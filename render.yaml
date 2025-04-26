@@ -1,9 +1,7 @@
-# render.yaml
-
 services:
-  # --- Persistent worker for intraday runs ---
-  - name: tradesmith-worker
-    type: worker
+  # 1) Persistent intraday worker
+  - type: worker
+    name: tradesmith-worker
     plan: standard
     runtime: docker
     disk:
@@ -14,24 +12,22 @@ services:
         sync: false
       - key: FMP_API_KEY
         sync: false
-    startCommand: "python worker.py"
+    startCommand: python worker.py
 
-  # --- Daily metrics (runs once at 07:00 ET / 11:00 UTC) ---
-  - name: tradesmith-daily-metrics
-    type: cron
-    runtime: docker
+  # 2) Daily master‐prices refresh (Mon–Fri @ 11:00 UTC / 07:00 ET)
+  - type: cron
+    name: tradesmith-daily-metrics
     schedule: "0 11 * * 1-5"
-    runCommand: "python update_master_prices.py"
+    command: python update_master_prices.py
     envVars:
       - key: FMP_API_KEY
         sync: false
 
-  # --- Daily delivery/report (runs once daily at 00:00 UTC Tue–Sat) ---
-  - name: tradesmith-daily-report
-    type: cron
-    runtime: docker
+  # 3) Daily email delivery/report (Tue–Sat @ 00:00 UTC)
+  - type: cron
+    name: tradesmith-daily-report
     schedule: "0 0 * * 2-6"
-    runCommand: "python run_daily_delivery.py"
+    command: python run_daily_delivery.py
     envVars:
       - key: OPENAI_API_KEY
         sync: false
@@ -46,12 +42,11 @@ services:
       - key: DELIVERY_EMAIL
         sync: false
 
-  # --- Weekly CIO memo (runs once Saturdays 00:00 UTC) ---
-  - name: tradesmith-weekly-report
-    type: cron
-    runtime: docker
+  # 4) Weekly CIO memo (Sat @ 00:00 UTC)
+  - type: cron
+    name: tradesmith-weekly-report
     schedule: "0 0 * * SAT"
-    runCommand: "python run_weekly_report.py"
+    command: python run_weekly_report.py
     envVars:
       - key: OPENAI_API_KEY
         sync: false
