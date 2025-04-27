@@ -1,6 +1,6 @@
 # 📈 TradeSmith: AI-Driven Intraday Trading Platform
 
-**Goal:** Transform the grind of monitoring 3,500 stocks into a hands‑off, intelligent engine—so you capture top opportunities and control risk without manual oversight.
+**Goal:** Transform the grind of monitoring every stock in the Wilshire 5000 into a hands‑off, intelligent engine—so you capture top opportunities and control risk without manual oversight.
 
 **Mission:** Every trading day, automatically identify the best 250 names, apply AI‑guided weight tweaks, and refine our factor mix hourly to maximize risk‑adjusted returns.
 
