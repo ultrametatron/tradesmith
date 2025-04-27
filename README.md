@@ -1,96 +1,84 @@
-# TradeSmith (Main Branch)
+# 📈 TradeSmith: AI-Driven Intraday Trading Platform
 
-**TradeSmith** is an autonomous intraday trading agent that uses OpenAI's `o4-mini` model for trading logic, quantitative signal analysis, and local NLP sentiment processing to simulate realistic global portfolio management. It runs on Render with a Python backend and uses data from IEX Cloud and DistilBERT.
+**Goal:** Transform the grind of monitoring 3,500 stocks into a hands‑off, intelligent engine—so you capture top opportunities and control risk without manual oversight.
 
----
-
-## 🔧 Features
-
-- **Intraday Trading Simulation**: Evaluates and adjusts a simulated portfolio every 10 minutes.
-- **Signal-Based Ranking**: Scores 5,000 stocks based on ten financial metrics and ranks the top 250.
-- **Sentiment Integration**: Locally runs DistilBERT to score 10 headlines per ticker with minimal memory use.
-- **OpenAI-Powered Decisions**: Uses `o4-mini` for trade instructions, constrained by IPS rules.
-- **Daily + Weekly Reports**: Generates a 250-word daily CIO update and a 400-word weekly memo using `gpt-4.1-mini`.
-- **Budget-Conscious**: Entire system runs on a Render Starter plan with predictable API costs.
+**Mission:** Every trading day, automatically identify the best 250 names, apply AI‑guided weight tweaks, and refine our factor mix hourly to maximize risk‑adjusted returns.
 
 ---
 
-## 📁 Folder Structure
+**TradeSmith** combines real-time data, quantitative signals, LLM reasoning, and a lightweight RL module into a seamless intraday trading workflow. Think of it as your 24/7 analyst, constantly scanning the entire market, making sense of complex patterns, and adjusting itself as conditions change.
 
+---
+
+## 🌟 What It Does Today
+
+1. **Every 15 Minutes:**  
+   - Fetches live prices & volumes from FMP for all tickers.  
+   - Merges them with yesterday’s master metrics (MA50, MA200, YTD, DivYield, etc.).  
+   - Re-scores and identifies the Top 250 candidates.
+2. **LLM-Driven Adjustments:**  
+   - Builds a compact prompt (including time-of-day & volume-imbalance context).  
+   - Uses OpenAI’s o4-mini to suggest precise portfolio weight tweaks.  
+3. **Apply & Log:**  
+   - Executes those tweaks (paper only) and logs P&L into an equity-curve CSV.  
+4. **Hourly RL-Light Learning:**  
+   - Every ~4 cycles, reviews recent risk-adjusted returns.  
+   - Nudges factor weights with entropy (diversification) & turnover controls.  
+5. **Automated Reports:**  
+   - Sends a 250-word summary each morning.  
+   - Delivers a 400-word CIO memo each Saturday.
+
+---
+
+## 🔧 Core Components
+
+| Script                         | Role                                                       |
+|--------------------------------|------------------------------------------------------------|
+| **worker.py**                  | Orchestrates 15‑min cycles via APScheduler                  |
+| **update_master_prices.py**    | Daily refresh of MA50/MA200, YTD returns, dividend yields   |
+| **rl_light_throttled.py**      | Hourly policy-gradient weight updates with entropy/turnover |
+| **run_daily_delivery.py**      | Generates and emails daily summary                         |
+| **run_weekly_report.py**       | Generates and emails weekly CIO memo                       |
+
+---
+
+## 🔄 Data & Workflow
+
+```mermaid
+flowchart TD
+  A[15-min FMP Price Fetch] --> B[Merge with master_metrics.csv]
+  B --> C[Compute Composite Score & Top 250]
+  C --> D[Build LLM Prompt (with context)]
+  D --> E[o4-mini Adjustment Suggestions]
+  E --> F[apply_adjustments + log_equity_curve]
+  F --> G[rl_light_throttled update every 4 cycles]
+  G --> H[Append equity_curve.csv]
+  H --> I[Daily/Weekly Report Crons]
 ```
-tradesmith/
-├─ state/              # Persistent data (portfolio, tickers, logs)
-├─ prompts/            # Templates for daily/weekly prompt construction
-├─ schemas/            # JSON function call schemas
-├─ *.py                # Core code modules
-├─ requirements.txt    # Python dependencies
-├─ Dockerfile          # Container setup
-└─ render.yaml         # Scheduled job configuration
-```
 
 ---
 
-## ⚙️ Setup
+## 🚀 Quickstart
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/your-username/tradesmith.git
-cd tradesmith
-```
-
-### 2. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Seed Data
-Ensure the following files exist under `state/`:
-- `holdings.csv` – starting with 100,000 CASH
-- `master_tickers.csv` – list of up to 5,000 global tickers
-- `metric_weights.json` – initial equal weights for 10 metrics
-
-### 4. Environment Variables
-On Render or locally, define:
-- `OPENAI_API_KEY`
-- `IEX_TOKEN`
-- NEWS_API_KEY — for fetching live headlines via NewsAPI
-
-### 5. Deploy to Render
-All tasks (intraday run, daily report, weekly memo) are configured in `render.yaml`.
+1. **Install** dependencies:  
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Configure** env vars (Render or local):  
+   `OPENAI_API_KEY`, `FMP_API_KEY`, `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `DELIVERY_EMAIL`
+3. **Deploy** on Render using `render.yaml` (worker + three cron jobs).
 
 ---
 
-## 📊 IPS Targets
+## 🛣️ Roadmap (Next)
 
-Trade decisions respect the following investment policy:
-- **Target Return**: 12% annualized
-- **Portfolio Beta**: ~0.80
-- **Sharpe Ratio**: > 0.70
-- **Sortino Ratio**: > 0.75
-- **Sector Cap**: 25%
-- **Turnover Cap**: Weekly % defined in `holdings.csv`
-- **Cost Budget**: Weekly AUD budget defined in `holdings.csv`
+| Enhancement                 | Impact   | Confidence | Effort |
+|-----------------------------|----------|------------|--------|
+| Adaptive learning-rate      | Medium   | Medium     | Low    |
+| EWMA reward smoothing       | Medium   | High       | Low    |
+| Risk-aversion coefficient   | Medium   | High       | Low    |
+| ε-Greedy exploration        | Low      | Low        | Low    |
 
 ---
 
-## 📈 Reporting Outputs
-
-- **Daily Report** (`state/daily_reports.csv`)
-  - Summary of equity performance, trades, risks (~250 words)
-- **Weekly Report** (`state/weekly_reports.csv`)
-  - Strategic memo on signals, return profile, risks (~400 words)
-
----
-
-## 🔮 Roadmap
-
-- Add valuation model support
-- Support real execution via broker API
-- Integrate reinforcement learning from trade history
-- Add optional ASX-only branch (coming soon)
-
----
-
-## 📜 License
-
-MIT License. Feel free to fork, use, or contribute.
+> **Note:** This system is paper-trading only. For live deployment, integrate a brokerage API and conduct thorough compliance reviews.
