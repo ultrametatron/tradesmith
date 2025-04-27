@@ -1,54 +1,152 @@
 #!/usr/bin/env python
-import os, sys, datetime
+"""
+run_intraday.py
+
+Main intraday orchestration:
+- Fetch live quotes for all 3500+ tickers
+- Merge onto static master metrics
+- Compute contextual features
+- Recalculate composite scores & select Top 250
+- Generate LLM prompt & apply adjustments
+- Throttled RL-Light weight update
+"""
+
+import os
+import time
+import logging
+from datetime import datetime
 import pandas as pd
-from pytz import timezone
 
-from update_master_prices import update_master
-from select_candidates import select
-from update_top250_live import update_top250_live
-from build_prompt import build_prompt
 from call_tradesmith import ask_trades
-from apply_adjustments import apply_adjustments
+from build_prompt import build_prompt
+from apply_adjustments import apply_adjustments, log_equity_curve
+from update_top250_live import fetch_prices
+from select_candidates import select
+from rl_light_throttled import update_weights_throttled
 
-STATE_DIR = "/data/state"
-TOP_N     = 250
+# ── Config ───────────────────────────────────────────────────────────────────────
+STATE_DIR          = "/data/state"
+MASTER_FILE        = os.path.join(STATE_DIR, "master_prices.csv")
+TOP250_LIVE_FILE   = os.path.join(STATE_DIR, "top250_live.csv")
 
-def in_us_trading_hours():
-    tz = timezone("America/New_York")
-    now = datetime.datetime.now(tz)
-    h, m, wd = now.hour, now.minute, now.weekday()
-    if wd > 4: return False
-    pre = (4 <= h < 9) or (h == 9 and m < 30)
-    reg = (h == 9 and m >= 30) or (10 <= h < 16)
-    post= (16 <= h < 20)
-    return pre or reg or post
+MAX_RETRIES        = 2      # number of fetch_prices retry attempts
+RETRY_DELAY        = 5      # seconds between retries
+# ────────────────────────────────────────────────────────────────────────────────
 
-def main():
-    if not in_us_trading_hours():
-        print("Outside US trading hours; exiting."); sys.exit(0)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
 
+def dynamic_intraday_cycle():
+    start = time.time()
+    logging.info("=== Starting intraday cycle ===")
+
+    # ensure state dir
     os.makedirs(STATE_DIR, exist_ok=True)
-    update_master(); print("master_prices.csv updated")
-    select(TOP_N);    print(f"top{TOP_N}.csv generated")
-    update_top250_live(); print("top250_live.csv generated")
 
-    df_live = pd.read_csv(f"{STATE_DIR}/top250_live.csv")
-    prompt  = build_prompt(df_live)
+    # 1. load master metrics
+    if not os.path.exists(MASTER_FILE):
+        logging.error("Master file missing: %s", MASTER_FILE)
+        return
+    df_master = pd.read_csv(MASTER_FILE)
+    symbols   = df_master["Symbol"].astype(str).tolist()
+    logging.info("Loaded master for %d symbols", len(symbols))
 
+    # 2. fetch live with retry
+    for i in range(1, MAX_RETRIES+1):
+        try:
+            t0 = time.time()
+            df_prices = fetch_prices(symbols)
+            logging.info(
+                "Fetched %d live quotes (try %d) in %.2fs",
+                len(symbols), i, time.time() - t0
+            )
+            break
+        except Exception as e:
+            logging.warning("Fetch attempt %d failed: %s", i, e)
+            if i < MAX_RETRIES:
+                time.sleep(RETRY_DELAY)
+            else:
+                logging.error("All fetch attempts failed; aborting")
+                return
+
+    # 3. merge & compute context
+    try:
+        df_live = df_master.merge(df_prices, on="Symbol", how="left")
+        logging.info("Merged live onto master metrics")
+        # --- Context features ---
+        now = datetime.utcnow()
+        hour = now.hour + now.minute/60
+        if hour < 13:
+            bucket = "pre_open"
+        elif hour < 20:  # 13–20 UTC = 9:00–16:00 ET
+            bucket = "open_hours"
+        else:
+            bucket = "post_close"
+        df_live["time_bucket"]   = bucket
+        df_live["vol_imbalance"] = df_live["volume"] / df_live["avgVolume"]
+        logging.info("Added context: time_bucket=%s, vol_imbalance", bucket)
+    except Exception as e:
+        logging.error("Error merging/context: %s", e)
+        return
+
+    # 4. snapshot
+    try:
+        df_live.to_csv(TOP250_LIVE_FILE, index=False)
+        logging.info("Saved live snapshot to %s", TOP250_LIVE_FILE)
+    except Exception as e:
+        logging.error("Error saving snapshot: %s", e)
+        return
+
+    # 5. select Top 250
+    try:
+        select(top_n=250)
+        logging.info("Selected Top 250")
+    except Exception as e:
+        logging.error("Selection error: %s", e)
+        return
+
+    # 6. build prompt
+    try:
+        prompt = build_prompt()
+        logging.info("Prompt built")
+    except Exception as e:
+        logging.error("Prompt error: %s", e)
+        return
+
+    # 7. LLM call
     try:
         adjustments = ask_trades(prompt)
+        logging.info("Received %d instructions",
+                     len(adjustments) if isinstance(adjustments, list) else 1)
     except Exception as e:
-        print(f"ask_trades failed: {e}"); adjustments = {}
+        logging.error("LLM call failed: %s", e)
+        return
 
+    # 8. apply & log
     try:
-        holdings, pnl = apply_adjustments(df_live, adjustments)
+        apply_adjustments(adjustments)
+        log_equity_curve()
+        logging.info("Adjustments applied & equity curve logged")
     except Exception as e:
-        print(f"apply_adjustments failed: {e}"); pnl = []
+        logging.error("Apply/log error: %s", e)
 
-    log_path = f"{STATE_DIR}/equity_curve.csv"
-    df_log = pd.DataFrame(pnl)
-    df_log.to_csv(log_path, mode="a", header=not os.path.exists(log_path), index=False)
-    print(f"P&L appended to {log_path}")
+    # 9. throttled RL-Light update
+    try:
+        info = update_weights_throttled()
+        if info.get("skipped"):
+            logging.info("RL update skipped (interval %d)", info["intervals"])
+        else:
+            logging.info("RL update done: intervals=%d window=%d reward=%.4f",
+                         info["intervals"], info["window"], info["reward"])
+    except Exception as e:
+        logging.error("RL update error: %s", e)
+
+    logging.info("=== Cycle completed in %.2f s ===", time.time() - start)
+
+def main():
+    dynamic_intraday_cycle()
 
 if __name__ == "__main__":
     main()
