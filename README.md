@@ -45,19 +45,25 @@
 ## 🔄 Data & Workflow
 
 ```mermaid
-flowchart TD
-  A[15-min FMP Price Fetch] --> B[Merge with master_metrics.csv]
-  B --> C[Compute Composite Score & Top 250]
-  C --> D[Build LLM Prompt with context]
+flowchart LR
+  A[15-min FMP Price Fetch] --> B[Merge w/ master_metrics.csv]
+  B --> C[Compute Composite Score & Top 250]
+  C --> D[Build LLM Prompt (with context)]
   D --> E[o4-mini Adjustment Suggestions]
-  E --> F[apply_adjustments + log_equity_curve]
-  F --> G[rl_light_throttled update every 4 cycles]
-  G --> H[Append equity_curve.csv]
-  H --> I[Daily/Weekly Report Crons]
+  E --> F[Apply Adjustments & Log Equity Curve]
+  F --> G{RL-Light Update Cycle?}
+  G -- Yes (every 4 cycles) --> H[RL-Light Weight Update]
+  G -- No --> I[Skip RL Update]
+  H --> I
+  I --> J[Append to equity_curve.csv]
+  J --> K[Back to Next 15-min Cycle]
+  K --> B
+  J --> L[Daily/Weekly Reporting Crons]
 ```
 
----
+This flowchart reflects both the linear progression of an intraday cycle and the looping behavior of the RL-Light update and reporting.
 
+---
 ## 🚀 Quickstart
 
 1. **Install** dependencies:  
