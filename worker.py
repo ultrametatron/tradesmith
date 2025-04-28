@@ -1,92 +1,63 @@
 #!/usr/bin/env python
+# worker.py
+
 import os
-import shutil
+import time
 import logging
-import datetime
+from datetime import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
-from pytz import timezone
 
-# ── Paths ───────────────────────────────────────────────────────────────────────
-HERE            = os.path.dirname(__file__)
-CODE_STATE_DIR  = os.path.join(HERE, "state")       # your repo-tracked folder
-DISK_STATE_DIR  = "/data/state"                     # your Render Disk mount
-# ────────────────────────────────────────────────────────────────────────────────
+from run_intraday import dynamic_intraday_cycle
+from update_master_prices import update_master  # ensure this writes to /data/state
 
-def bootstrap_state():
-    """
-    Copy all files from repo's state/ folder into the persistent disk at /data/state
-    if they don't already exist there.
-    """
-    os.makedirs(DISK_STATE_DIR, exist_ok=True)
+# ── Config ────────────────────────────────────────────────────────────
+# Intraday: every 15 min, Mon–Fri, between 4:00–19:00 UTC (i.e. 00:00–15:00 ET)
+INTRADAY_CRON = {
+    'day_of_week': 'mon-fri',
+    'hour': '4-19',
+    'minute': '*/15'
+}
+# Daily master refresh: Mon–Fri at 11:00 UTC
+DAILY_CRON = {
+    'day_of_week': 'mon-fri',
+    'hour': '11',
+    'minute': '0'
+}
+# ─────────────────────────────────────────────────────────────────────
 
-    if not os.path.isdir(CODE_STATE_DIR):
-        logging.warning(f"Repo state dir not found at {CODE_STATE_DIR}; skipping bootstrap.")
-        return
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
 
-    for fname in os.listdir(CODE_STATE_DIR):
-        src = os.path.join(CODE_STATE_DIR, fname)
-        dst = os.path.join(DISK_STATE_DIR, fname)
-        if not os.path.exists(dst):
-            logging.info(f"Seeding {dst} from {src}")
-            shutil.copy(src, dst)
+def start_scheduler():
+    scheduler = BlockingScheduler(timezone="UTC")
 
-def in_us_trading_hours() -> bool:
-    """
-    Return True if now (Eastern Time) is within:
-      - Pre-market:   04:00–09:29
-      - Regular:      09:30–16:00
-      - Post-market:  16:00–20:00
-    on a Monday–Friday.
-    """
-    tz_ny = timezone("America/New_York")
-    now   = datetime.datetime.now(tz_ny)
-    h, m, wd = now.hour, now.minute, now.weekday()  # Mon=0…Fri=4
-    if wd > 4:
-        return False
-    pre  = (4 <= h < 9) or (h == 9 and m < 30)
-    reg  = (h == 9 and m >= 30) or (10 <= h < 16)
-    post = (16 <= h < 20)
-    return pre or reg or post
+    # Intraday job
+    scheduler.add_job(
+        dynamic_intraday_cycle,
+        'cron',
+        **INTRADAY_CRON,
+        id='intraday_cycle'
+    )
+    logging.info("Scheduled intraday cycle: %s", INTRADAY_CRON)
 
-def main():
-    # 0) Only proceed if within US trading hours
-    if not in_us_trading_hours():
-        logging.info("Outside US trading hours; skipping run.")
-        return
+    # Daily master-metrics job
+    scheduler.add_job(
+        update_master,
+        'cron',
+        **DAILY_CRON,
+        id='daily_master_refresh'
+    )
+    logging.info("Scheduled daily master refresh: %s", DAILY_CRON)
 
-    # 1) Import and run your intraday logic
+    logging.info("Starting scheduler…")
     try:
-        from run_intraday import main as intraday_main
-    except ImportError as e:
-        logging.error(f"Could not import run_intraday: {e}")
-        return
-
-    try:
-        intraday_main()
-    except Exception:
-        logging.exception("Intraday run failed")
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Scheduler stopped.")
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s"
-    )
-
-    # 1) Bootstrap seed files into persistent disk
-    bootstrap_state()
-
-    # 2) Run once immediately on startup
-    main()
-
-    # 3) Schedule recurring runs every 15 minutes, Mon–Fri, ET 04:00–19:59
-    scheduler = BlockingScheduler(timezone="America/New_York")
-    scheduler.add_job(
-        main,
-        trigger="cron",
-        day_of_week="mon-fri",
-        hour="4-19",
-        minute="*/15",
-        id="intraday_job",
-        max_instances=1
-    )
-    scheduler.start()
+    # Ensure state directory exists for both jobs
+    os.makedirs("/data/state", exist_ok=True)
+    start_scheduler()
