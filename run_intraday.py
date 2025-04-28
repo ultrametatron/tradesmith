@@ -14,8 +14,8 @@ Main intraday orchestration:
 import os
 import time
 import logging
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
 
 from call_tradesmith import ask_trades
 from build_prompt import build_prompt
@@ -42,10 +42,10 @@ def dynamic_intraday_cycle():
     start = time.time()
     logging.info("=== Starting intraday cycle ===")
 
-    # ensure state dir
+    # ensure state dir exists
     os.makedirs(STATE_DIR, exist_ok=True)
 
-    # 1. load master metrics
+    # 1. Load static master metrics
     if not os.path.exists(MASTER_FILE):
         logging.error("Master file missing: %s", MASTER_FILE)
         return
@@ -53,7 +53,7 @@ def dynamic_intraday_cycle():
     symbols   = df_master["Symbol"].astype(str).tolist()
     logging.info("Loaded master for %d symbols", len(symbols))
 
-    # 2. fetch live with retry
+    # 2. Fetch live prices with retry
     for i in range(1, MAX_RETRIES+1):
         try:
             t0 = time.time()
@@ -68,30 +68,30 @@ def dynamic_intraday_cycle():
             if i < MAX_RETRIES:
                 time.sleep(RETRY_DELAY)
             else:
-                logging.error("All fetch attempts failed; aborting")
+                logging.error("All fetch attempts failed; aborting cycle")
                 return
 
-    # 3. merge & compute context
+    # 3. Merge and compute context
     try:
         df_live = df_master.merge(df_prices, on="Symbol", how="left")
         logging.info("Merged live onto master metrics")
-        # --- Context features ---
+
         now = datetime.utcnow()
-        hour = now.hour + now.minute/60
+        hour = now.hour + now.minute / 60
         if hour < 13:
             bucket = "pre_open"
-        elif hour < 20:  # 13–20 UTC = 9:00–16:00 ET
+        elif hour < 20:
             bucket = "open_hours"
         else:
             bucket = "post_close"
-        df_live["time_bucket"]   = bucket
+        df_live["time_bucket"] = bucket
         df_live["vol_imbalance"] = df_live["volume"] / df_live["avgVolume"]
-        logging.info("Added context: time_bucket=%s, vol_imbalance", bucket)
+        logging.info("Added context: time_bucket=%s", bucket)
     except Exception as e:
         logging.error("Error merging/context: %s", e)
         return
 
-    # 4. snapshot
+    # 4. Save live snapshot
     try:
         df_live.to_csv(TOP250_LIVE_FILE, index=False)
         logging.info("Saved live snapshot to %s", TOP250_LIVE_FILE)
@@ -99,7 +99,7 @@ def dynamic_intraday_cycle():
         logging.error("Error saving snapshot: %s", e)
         return
 
-    # 5. select Top 250
+    # 5. Select Top 250
     try:
         select(top_n=250)
         logging.info("Selected Top 250")
@@ -107,7 +107,7 @@ def dynamic_intraday_cycle():
         logging.error("Selection error: %s", e)
         return
 
-    # 6. build prompt
+    # 6. Build prompt
     try:
         prompt = build_prompt()
         logging.info("Prompt built")
@@ -115,38 +115,42 @@ def dynamic_intraday_cycle():
         logging.error("Prompt error: %s", e)
         return
 
-    # 7. LLM call
+    # 7. LLM-driven adjustments
     try:
         adjustments = ask_trades(prompt)
-        logging.info("Received %d instructions",
-                     len(adjustments) if isinstance(adjustments, list) else 1)
+        count = len(adjustments) if isinstance(adjustments, list) else 1
+        logging.info("Received %d instructions", count)
     except Exception as e:
         logging.error("LLM call failed: %s", e)
         return
 
-    # 8. apply & log
+    # 8. Apply changes and log results
     try:
-        apply_adjustments(adjustments)
-        log_equity_curve()
-        logging.info("Adjustments applied & equity curve logged")
+        df_updated, pnl_log = apply_adjustments(df_live, adjustments)
+        log_equity_curve(pnl_log)
+        logging.info("Applied adjustments and logged equity curve update")
     except Exception as e:
-        logging.error("Apply/log error: %s", e)
+        logging.error("Error applying adjustments or logging equity curve: %s", e)
 
-    # 9. throttled RL-Light update
+    # 9. Throttled RL-Light update
     try:
         info = update_weights_throttled()
         if info.get("skipped"):
             logging.info("RL update skipped (interval %d)", info["intervals"])
         else:
-            logging.info("RL update done: intervals=%d window=%d reward=%.4f",
-                         info["intervals"], info["window"], info["reward"])
+            logging.info(
+                "RL update done: intervals=%d window=%d reward=%.4f",
+                info["intervals"], info["window"], info["reward"]
+            )
     except Exception as e:
         logging.error("RL update error: %s", e)
 
-    logging.info("=== Cycle completed in %.2f s ===", time.time() - start)
+    logging.info("=== Cycle completed in %.2f seconds ===", time.time() - start)
+
 
 def main():
     dynamic_intraday_cycle()
+
 
 if __name__ == "__main__":
     main()
