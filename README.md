@@ -48,7 +48,7 @@
 flowchart LR
   A[15-min FMP Price Fetch] --> B[Merge w/ master_metrics.csv]
   B --> C[Compute Composite Score & Top 250]
-  C --> D[Build LLM Prompt (with context)]
+  C --> D[Build LLM Prompt with context]
   D --> E[o4-mini Adjustment Suggestions]
   E --> F[Apply Adjustments & Log Equity Curve]
   F --> G{RL-Light Update Cycle?}
