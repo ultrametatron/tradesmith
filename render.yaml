@@ -15,16 +15,19 @@ services:
       - key: FMP_API_KEY
         sync: false
 
-  # 2) Daily master‐prices refresh (Mon–Fri @ 11:00 UTC / 07:00 ET)
+  
+  # 2) Daily master metrics (needs disk mount too!)
   - name: tradesmith-daily-metrics
     type: cron
     runtime: python
     schedule: "0 11 * * 1-5"
+    disk:
+      name: tradesmith-data
+      mountPath: /data
     buildCommand: pip install -r requirements.txt
     startCommand: python update_master_prices.py
     envVars:
       - key: FMP_API_KEY
-        sync: false
 
   # 3) Daily report delivery (Tue–Sat @ 00:00 UTC)
   - name: tradesmith-daily-report
