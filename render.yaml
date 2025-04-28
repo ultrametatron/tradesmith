@@ -1,8 +1,8 @@
 services:
   - name: tradesmith-worker
     type: worker
-    runtime: python
     plan: standard
+    runtime: python
     disk:
       name: tradesmith-data
       mountPath: /data
@@ -10,7 +10,9 @@ services:
     startCommand: python worker.py
     envVars:
       - key: OPENAI_API_KEY
+        sync: false
       - key: FMP_API_KEY
+        sync: false
 
   - name: tradesmith-daily-report
     type: cron
@@ -20,11 +22,17 @@ services:
     startCommand: python run_daily_delivery.py
     envVars:
       - key: OPENAI_API_KEY
+        sync: false
       - key: SMTP_SERVER
+        sync: false
       - key: SMTP_PORT
+        sync: false
       - key: SMTP_USER
+        sync: false
       - key: SMTP_PASS
+        sync: false
       - key: DELIVERY_EMAIL
+        sync: false
 
   - name: tradesmith-weekly-report
     type: cron
@@ -34,3 +42,4 @@ services:
     startCommand: python run_weekly_report.py
     envVars:
       - key: OPENAI_API_KEY
+        sync: false
