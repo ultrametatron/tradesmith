@@ -48,7 +48,7 @@
 flowchart TD
   A[15-min FMP Price Fetch] --> B[Merge with master_metrics.csv]
   B --> C[Compute Composite Score & Top 250]
-  C --> D[Build LLM Prompt (with context)]
+  C --> D[Build LLM Prompt with context]
   D --> E[o4-mini Adjustment Suggestions]
   E --> F[apply_adjustments + log_equity_curve]
   F --> G[rl_light_throttled update every 4 cycles]
