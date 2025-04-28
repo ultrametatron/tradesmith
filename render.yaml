@@ -1,9 +1,8 @@
 services:
-  # 1) Intraday worker (persistent disk + APScheduler)
   - name: tradesmith-worker
     type: worker
-    plan: standard
     runtime: python
+    plan: standard
     disk:
       name: tradesmith-data
       mountPath: /data
@@ -11,25 +10,8 @@ services:
     startCommand: python worker.py
     envVars:
       - key: OPENAI_API_KEY
-        sync: false
-      - key: FMP_API_KEY
-        sync: false
-
-  
-  # 2) Daily master metrics (needs disk mount too!)
-  - name: tradesmith-daily-metrics
-    type: cron
-    runtime: python
-    schedule: "0 11 * * 1-5"
-    disk:
-      name: tradesmith-data
-      mountPath: /data
-    buildCommand: pip install -r requirements.txt
-    startCommand: python update_master_prices.py
-    envVars:
       - key: FMP_API_KEY
 
-  # 3) Daily report delivery (Tue–Sat @ 00:00 UTC)
   - name: tradesmith-daily-report
     type: cron
     runtime: python
@@ -38,19 +20,12 @@ services:
     startCommand: python run_daily_delivery.py
     envVars:
       - key: OPENAI_API_KEY
-        sync: false
       - key: SMTP_SERVER
-        sync: false
       - key: SMTP_PORT
-        sync: false
       - key: SMTP_USER
-        sync: false
       - key: SMTP_PASS
-        sync: false
       - key: DELIVERY_EMAIL
-        sync: false
 
-  # 4) Weekly CIO memo (Sat @ 00:00 UTC)
   - name: tradesmith-weekly-report
     type: cron
     runtime: python
@@ -59,4 +34,3 @@ services:
     startCommand: python run_weekly_report.py
     envVars:
       - key: OPENAI_API_KEY
-        sync: false
