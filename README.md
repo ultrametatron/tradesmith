@@ -6,7 +6,7 @@
 
 ---
 
-**TradeSmith** combines real-time data, quantitative signals, LLM reasoning, and a lightweight RL module into a seamless intraday trading workflow. Think of it as your 24/7 analyst, constantly scanning the entire market, making sense of complex patterns, and adjusting itself as conditions change.
+**TradeSmith** combines real-time data, quantitative signals, LLM reasoning, and a lightweight Reinforcement Learning module into a seamless intraday trading workflow. Think of it as your 24/7 analyst, constantly scanning the entire market, making sense of complex patterns, and adjusting itself as conditions change.
 
 ---
 
