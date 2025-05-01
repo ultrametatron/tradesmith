@@ -1,90 +1,148 @@
-# 📈 TradeSmith: AI-Driven Intraday Trading Platform
+TradeSmith
 
-**Goal:** Transform the grind of monitoring every stock in the Wilshire 5000 into a hands‑off, intelligent engine—so you capture top opportunities and control risk without manual oversight.
+TradeSmith is a modular AI-assisted trading intelligence system that integrates real-time market data, financial factor modeling, LLM-based decision-making, reinforcement learning adjustments, and end-of-day reporting.
 
-**Mission:** Every trading day, automatically identify the best 250 names, apply AI‑guided weight tweaks, and refine our factor mix hourly to maximize risk‑adjusted returns.
+The goal is to build an end-to-end research and execution pipeline that remains fully traceable, efficient, and easily extensible. It’s designed for use by researchers, algorithmic traders, and AI-assisted portfolio builders who want to prototype novel decision pipelines using open tooling and cloud-native infrastructure.
 
----
+⸻
 
-**TradeSmith** combines real-time data, quantitative signals, LLM reasoning, and a lightweight Reinforcement Learning module into a seamless intraday trading workflow. Think of it as your 24/7 analyst, constantly scanning the entire market, making sense of complex patterns, and adjusting itself as conditions change.
+🚀 Features
+	•	Data Ingestion: Pull stock quotes, fundamentals, and ticker metadata from the FMP API
+	•	Central Storage: Use Google BigQuery as a queryable, structured warehouse for all raw and derived data
+	•	Factor Computation: Compute and score valuation, growth, quality, and technical signals per ticker
+	•	LLM Decision Engine: Prompt an OpenAI model (e.g. o4-mini) to suggest portfolio actions
+	•	Reinforcement Feedback: Adjust logic using post-hoc RL-light gradient approximations
+	•	Daily Reporting: Automatically generate and store summaries, performance stats, and metadata
 
----
+⸻
 
-## 🌟 What It Does Today
+🧱 Architecture Overview
 
-1. **Every 15 Minutes:**  
-   - Fetches live prices & volumes from FMP for all tickers.  
-   - Merges them with yesterday’s master metrics (MA50, MA200, YTD, DivYield, etc.).  
-   - Re-scores and identifies the Top 250 candidates.
-2. **LLM-Driven Adjustments:**  
-   - Builds a compact prompt (including time-of-day & volume-imbalance context).  
-   - Uses OpenAI’s o4-mini to suggest precise portfolio weight tweaks.  
-3. **Apply & Log:**  
-   - Executes those tweaks (paper only) and logs P&L into an equity-curve CSV.  
-4. **Hourly RL-Light Learning:**  
-   - Every ~4 cycles, reviews recent risk-adjusted returns.  
-   - Nudges factor weights with entropy (diversification) & turnover controls.  
-5. **Automated Reports:**  
-   - Sends a 250-word summary each morning.  
-   - Delivers a 400-word CIO memo each Saturday.
++-------------+       +-----------------+       +------------------+
+|   FMP API   | --->  |  Ingestion Jobs  | --->  |  BigQuery Tables  |
++-------------+       +-----------------+       +------------------+
+                                                  |
+                                                  v
+                                        +-------------------+
+                                        |  Factor Computation|
+                                        +-------------------+
+                                                  |
+                                                  v
+                                          +---------------+
+                                          |  LLM Prompts  |
+                                          +---------------+
+                                                  |
+                                                  v
+                                        +------------------+
+                                        |  RL Adjustments  |
+                                        +------------------+
+                                                  |
+                                                  v
+                                           +-------------+
+                                           |  Reporting   |
+                                           +-------------+
 
----
 
-## 🔧 Core Components
 
-| Script                         | Role                                                       |
-|--------------------------------|------------------------------------------------------------|
-| **worker.py**                  | Orchestrates 15‑min cycles via APScheduler                  |
-| **update_master_prices.py**    | Daily refresh of MA50/MA200, YTD returns, dividend yields   |
-| **rl_light_throttled.py**      | Hourly policy-gradient weight updates with entropy/turnover |
-| **run_daily_delivery.py**      | Generates and emails daily summary                         |
-| **run_weekly_report.py**       | Generates and emails weekly CIO memo                       |
+⸻
 
----
+📊 Current Status
 
-## 🔄 Data & Workflow
+✅ Completed
+	•	Phase 1A: Local environment and credentials setup
+	•	Phase 1B: BigQuery dataset and table creation
+	•	Local + cloud authentication and service account setup
 
-```mermaid
-flowchart LR
-  A[15-min FMP Price Fetch] --> B[Merge w/ master_metrics.csv]
-  B --> C[Compute Composite Score & Top 250]
-  C --> D[Build LLM Prompt with context]
-  D --> E[o4-mini Adjustment Suggestions]
-  E --> F[Apply Adjustments & Log Equity Curve]
-  F --> G{RL-Light Update Cycle?}
-  G -- Yes (every 4 cycles) --> H[RL-Light Weight Update]
-  G -- No --> I[Skip RL Update]
-  H --> I
-  I --> J[Append to equity_curve.csv]
-  J --> K[Back to Next 15-min Cycle]
-  K --> B
-  J --> L[Daily/Weekly Reporting Crons]
-```
+⚙️ In Progress
+	•	Phase 1C: ETL ingestion via Airbyte (FMP → BigQuery)
+	•	Phase 2: Factor computation via SQL in BigQuery
+	•	Phase 3: Prompt creation and LLM interaction
+	•	Phase 4: Decision and execution tracking
+	•	Phase 5: RL update loop and KPI tracking
+	•	Phase 6: Daily narrative report generation
+	•	ETL migration to Airbyte (replacing GitHub Actions ingestion)
 
-This flowchart reflects both the linear progression of an intraday cycle and the looping behavior of the RL-Light update and reporting.
+⸻
 
----
-## 🚀 Quickstart
+🗂️ Datasets & Tables (BigQuery)
 
-1. **Install** dependencies:  
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. **Configure** env vars (Render or local):  
-   `OPENAI_API_KEY`, `FMP_API_KEY`, `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `DELIVERY_EMAIL`
-3. **Deploy** on Render using `render.yaml` (worker + three cron jobs).
+Dataset	Tables	Purpose
+raw_market	symbols, quotes_intraday, fundamentals_daily	Price and financial data
+factor_engine	factor_scores, candidate_list	Signal computation and ranking
+prompt_logs	prompts, prompt_responses	Inputs and outputs of LLM calls
+decision_history	decisions, executions	Suggested and executed portfolio moves
+rl_light	rl_updates, kpi_tracking	Feedback adjustment and performance logs
+job_runs	job_runs	CI logs, Git hashes, status markers
+daily_reports	daily_report_logs	EOD text summary and JSON metrics
 
----
 
-## 🛣️ Roadmap (Next)
 
-| Enhancement                 | Impact   | Confidence | Effort |
-|-----------------------------|----------|------------|--------|
-| Adaptive learning-rate      | Medium   | Medium     | Low    |
-| EWMA reward smoothing       | Medium   | High       | Low    |
-| Risk-aversion coefficient   | Medium   | High       | Low    |
-| ε-Greedy exploration        | Low      | Low        | Low    |
+⸻
 
----
+⚡ Quick Start
 
-> **Note:** This system is paper-trading only. For live deployment, integrate a brokerage API and conduct thorough compliance reviews.
+Prerequisites
+	•	Python 3.9+
+	•	BigQuery-enabled GCP project
+	•	Service account key (JSON)
+	•	GitHub repository with Actions enabled
+
+Local Setup
+
+python3 -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+pip install -r requirements.txt
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service_account.json"
+
+
+
+⸻
+
+🛣️ Development Roadmap
+
+✅ Completed & In Progress
+
+Phase	🧩 Module	Status	Description
+1A	Local Setup	✅ Completed	Python venv, GCP credentials, service account auth
+1B	Table Creation	✅ Completed	BigQuery schema design and dataset creation
+1C	ETL Ingestion (Airbyte)	⚙️ In Progress	Replace GitHub Action with connector-based pipeline
+
+⏭️ Planned
+
+Phase	🧩 Module	Description
+2	Factor Computation	BigQuery SQL: quality, value, growth, technical metrics
+3	LLM Prompting	Generate prompts using enriched data + call o4-mini
+4	Decision Logging	Capture actions, confidence scores, simulated fills
+5	RL-Light Feedback	Adjust factor weights based on reward signals
+6	Reporting	Generate daily summaries with stats + LLM commentary
+
+✅ Completed
+
+Phase	🧩 Module	Description
+1A	Local Setup	Python venv, GCP credentials, service account auth
+1B	Table Creation	BigQuery schema design and dataset creation
+
+⚙️ In Progress
+
+Phase	🧩 Module	Description
+1C	ETL Ingestion (Airbyte)	Replace GitHub Action with connector-based pipeline
+
+⏭️ Planned
+
+Phase	🧩 Module	Description
+2	Factor Computation	BigQuery SQL: quality, value, growth, technical metrics
+3	LLM Prompting	Generate prompts using enriched data + call o4-mini
+4	Decision Logging	Capture actions, confidence scores, simulated fills
+5	RL-Light Feedback	Adjust factor weights based on reward signals
+6	Reporting	Generate daily summaries with stats + LLM commentary
+
+
+⸻
+
+⚖️ License
+
+MIT License
+
+⸻
+
+Repository maintained by Mayank P. | Built with OpenAI, BigQuery, GitHub Actions, and FMP.
