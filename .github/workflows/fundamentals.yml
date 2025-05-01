@@ -1,17 +1,31 @@
-# .github/workflows/fundamentals.yml
 name: Daily Fundamentals
+
 on:
   schedule:
-    - cron: "0 12 * * MON-FRI"    # e.g. 12:00 UTC daily, before market open
+    # Run at 12:00 UTC Monday–Friday (≈30 min before US market open)
+    - cron: '0 12 * * 1-5'
+
 jobs:
   fundamentals:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with: python-version: "3.9"
-      - run: pip install -r requirements.txt
-      - run: |
-          python scripts/fundamentals_pull.py
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account key
+        run: echo "${{ secrets.GCP_SA_KEY }}" > sa.json
+
+      - name: Run fundamentals pull
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY_PATH }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/sa.json
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: python scripts/fundamentals_pull.py
