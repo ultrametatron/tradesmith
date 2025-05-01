@@ -22,8 +22,8 @@ jobs:
       - name: Write service account key
         run: |
           cat <<EOF > sa.json
-${{ secrets.GCP_SA_KEY }}
-EOF
+          ${{ secrets.GCP_SA_KEY }}
+          EOF
 
       - name: Run quotes pull
         env:
