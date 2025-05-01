@@ -16,7 +16,7 @@ from google.oauth2 import service_account
 
 # ─── CONFIG (can be overridden via flags) ────────────────────────────────
 DEFAULT_MAX_QUOTES     = 3500
-DEFAULT_FUND_BATCH     = 100   # safe bulk‐profile limit per FMP docs
+DEFAULT_FUND_BATCH     = 50   # safe bulk‐profile limit per FMP docs
 CSV_FILE               = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
 PROJECT_ENV            = os.getenv("GCP_PROJECT", "tradesmith-458506")
 SA_JSON_ENV            = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "sa.json")
