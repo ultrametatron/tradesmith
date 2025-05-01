@@ -1,82 +1,130 @@
 #!/usr/bin/env python3
 """
-Phase 2: Ingest Wilshire 5000 + quotes & fundamentals,
-retrieving FMP key from Secret Manager at runtime.
+Phase 2: Ingest Wilshire 5000 symbols + quotes & fundamentals (first 250 tickers),
+explicitly loading service-account credentials from sa.json so no ADC errors.
 """
 
-import os, time, csv, requests, argparse
-from google.cloud import bigquery, secretmanager
+import os
+import time
+import csv
+import requests
+from google.cloud import bigquery, secretmanager_v1
+from google.oauth2 import service_account
 
-PROJECT = os.getenv("GCP_PROJECT", "tradesmith-458506")
-DATASET = "raw_market"
-CSV_FILE = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
-MAX_TICKERS = 250
-FMP_SECRET_NAME = f"projects/{PROJECT}/secrets/FMP_API_KEY/versions/latest"
+# ─── CONFIG ─────────────────────────────────────────────────────────────
+PROJECT      = os.getenv("GCP_PROJECT", "tradesmith-458506")
+DATASET      = "raw_market"
+CSV_FILE     = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
+MAX_TICKERS  = 250
+FMP_BASE     = "https://financialmodelingprep.com/api/v3"
+# The workflow writes your SA key here:
+SA_JSON_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "sa.json")
+# Secret Manager resource name:
+FMP_SECRET = f"projects/{PROJECT}/secrets/FMP_API_KEY/versions/latest"
+# ────────────────────────────────────────────────────────────────────────
 
-def get_fmp_key():
-    client = secretmanager.SecretManagerServiceClient()
-    resp = client.access_secret_version(name=FMP_SECRET_NAME)
-    return resp.payload.data.decode("utf-8")
+def load_credentials():
+    """Load service-account JSON from sa.json and return Credentials."""
+    if not os.path.exists(SA_JSON_PATH):
+        raise FileNotFoundError(f"{SA_JSON_PATH} not found. Did your workflow write it?")
+    return service_account.Credentials.from_service_account_file(SA_JSON_PATH)
 
-def load_symbols(path):
+def get_fmp_key(creds):
+    """Use Secret Manager client to fetch the FMP API key secret."""
+    sm = secretmanager_v1.SecretManagerServiceClient(credentials=creds)
+    resp = sm.access_secret_version(name=FMP_SECRET)
+    return resp.payload.data.decode("utf-8").strip()
+
+def load_symbols():
+    """Read tickers from CSV; expects a header with 'symbol' column."""
     syms = []
-    with open(path, newline="") as f:
-        reader = csv.reader(f); header = next(reader)
+    with open(CSV_FILE, newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader)
         idx = header.index("symbol") if "symbol" in header else 0
         for row in reader:
             s = row[idx].strip().upper()
-            if s: syms.append(s)
+            if s:
+                syms.append(s)
     return syms
 
-def write_symbols(bq, syms):
-    tid = f"{PROJECT}.{DATASET}.symbols"
-    rows = [{"symbol":s,"name":"","exchange":""} for s in syms]
-    print(f"Inserting {len(rows)} symbols…")
-    errs = bq.insert_rows_json(tid, rows)
-    print("⚠️ Errors" if errs else "✅ Symbols loaded.", errs or "")
+def write_symbols(bq, symbols):
+    """Stream the full CSV list into raw_market.symbols."""
+    table = f"{PROJECT}.{DATASET}.symbols"
+    rows = [{"symbol":s, "name":"", "exchange":""} for s in symbols]
+    print(f"Inserting {len(rows)} symbols into {table}…")
+    errs = bq.insert_rows_json(table, rows)
+    if errs:
+        print("⚠️ Symbol insert errors:", errs)
+    else:
+        print("✅ Symbols loaded")
 
-def ingest_quotes(bq, syms, key):
-    tid = f"{PROJECT}.{DATASET}.quotes_intraday"
+def ingest_quotes(bq, tickers, fmp_key):
+    """Fetch latest quote per ticker, write into quotes_intraday."""
+    table = f"{PROJECT}.{DATASET}.quotes_intraday"
     rows = []
-    for s in syms:
-        url = f"https://financialmodelingprep.com/api/v3/quote/{s}?apikey={key}"
-        data = requests.get(url).json()
+    for t in tickers:
+        url = f"{FMP_BASE}/quote/{t}?apikey={fmp_key}"
+        r = requests.get(url); r.raise_for_status()
+        data = r.json()
         if data:
             q = data[0]
-            rows.append({"ticker":s,"ts":q["timestamp"],"price":q["price"],"volume":q["volume"]})
+            rows.append({
+                "ticker": t,
+                "ts":      q["timestamp"],
+                "price":   q["price"],
+                "volume":  q["volume"]
+            })
         time.sleep(0.1)
-    print(f"Inserting {len(rows)} quotes…")
-    errs = bq.insert_rows_json(tid, rows)
-    print("⚠️ Errors" if errs else "✅ Quotes loaded.", errs or "")
+    print(f"Inserting {len(rows)} quotes into {table}…")
+    errs = bq.insert_rows_json(table, rows)
+    if errs:
+        print("⚠️ Quote insert errors:", errs)
+    else:
+        print("✅ Quotes loaded")
 
-def ingest_fundamentals(bq, syms, key):
-    tid = f"{PROJECT}.{DATASET}.fundamentals_daily"
+def ingest_fundamentals(bq, tickers, fmp_key):
+    """Fetch profile per ticker, write into fundamentals_daily."""
+    table = f"{PROJECT}.{DATASET}.fundamentals_daily"
     rows = []
-    for s in syms:
-        url = f"https://financialmodelingprep.com/api/v3/profile/{s}?apikey={key}"
-        data = requests.get(url).json()
+    for t in tickers:
+        url = f"{FMP_BASE}/profile/{t}?apikey={fmp_key}"
+        r = requests.get(url); r.raise_for_status()
+        data = r.json()
         if data:
             p = data[0]
-            rows.append({"ticker":s,"as_of_date":p.get("priceDate"),"json_payload":p})
+            rows.append({
+                "ticker":       t,
+                "as_of_date":   p.get("priceDate"),
+                "json_payload": p
+            })
         time.sleep(0.1)
-    print(f"Inserting {len(rows)} fundamentals…")
-    errs = bq.insert_rows_json(tid, rows)
-    print("⚠️ Errors" if errs else "✅ Fundamentals loaded.", errs or "")
+    print(f"Inserting {len(rows)} fundamentals into {table}…")
+    errs = bq.insert_rows_json(table, rows)
+    if errs:
+        print("⚠️ Fundamentals insert errors:", errs)
+    else:
+        print("✅ Fundamentals loaded")
 
 def main():
-    # 1) fetch secret
-    fmp_key = get_fmp_key()
+    # Load creds and clients
+    creds = load_credentials()
+    bq_client = bigquery.Client(project=PROJECT, credentials=creds)
 
-    # 2) load symbols
-    syms = load_symbols(CSV_FILE)
-    write_symbols(bigquery.Client(project=PROJECT), syms)
+    # Pull the FMP API key from Secret Manager
+    fmp_key = get_fmp_key(creds)
 
-    # 3) ingest first N tickers
-    subs = syms[:MAX_TICKERS]
-    print(f"Running quotes/fundamentals for {len(subs)} tickers…")
-    bq = bigquery.Client(project=PROJECT)
-    ingest_quotes(bq, subs, fmp_key)
-    ingest_fundamentals(bq, subs, fmp_key)
+    # Load & write Wilshire symbols
+    symbols = load_symbols()
+    write_symbols(bq_client, symbols)
 
-if __name__=="__main__":
+    # Limit for detailed ingestion
+    tickers = symbols[:MAX_TICKERS]
+    print(f"Processing quotes & fundamentals for {len(tickers)} tickers…")
+
+    # Ingest market data
+    ingest_quotes(bq_client, tickers, fmp_key)
+    ingest_fundamentals(bq_client, tickers, fmp_key)
+
+if __name__ == "__main__":
     main()
