@@ -18,7 +18,7 @@ from google.oauth2 import service_account
 PROJECT               = os.getenv("GCP_PROJECT", "tradesmith-458506")
 DATASET               = "raw_market"
 CSV_FILE              = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
-MAX_QUOTE_TICKERS     = 250        # number of tickers to fetch intraday for
+MAX_QUOTE_TICKERS     = 3500        # number of tickers to fetch intraday for
 FUNDAMENTAL_BATCH     = 1000       # chunk size for bulk fundamentals calls
 FMP_BASE              = "https://financialmodelingprep.com/api/v3"
 SA_JSON_PATH          = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "sa.json")
