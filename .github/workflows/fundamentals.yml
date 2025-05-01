@@ -1,9 +1,8 @@
+# .github/workflows/fundamentals.yml
 name: Daily Fundamentals
 
 on:
-  schedule:
-    # Run at 12:00 UTC Monday–Friday (≈30 min before US market open)
-    - cron: '0 12 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   fundamentals:
