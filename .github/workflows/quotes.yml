@@ -1,12 +1,8 @@
+# .github/workflows/quotes.yml
 name: Intraday Quotes
 
 on:
-  schedule:
-    # Every 10 min during the core market window
-    - cron: '*/10 13-20 * * 1-5'
-    # Every 30 min in off-peak pre/post-market
-    - cron: '*/30 8-12 * * 1-5'
-    - cron: '*/30 20-23 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   quotes:
