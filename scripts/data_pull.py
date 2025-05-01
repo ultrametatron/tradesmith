@@ -1,30 +1,56 @@
 #!/usr/bin/env python3
 """
-Phase 2 (filtered): Ingest Wilshire 5000 symbols, plus quotes & fundamentals for first 250 tickers.
+Phase 2: Ingest Wilshire 5000 symbols + intraday quotes & fundamentals (first 250 tickers).
 """
 
 import os
 import time
 import csv
 import requests
+import argparse
 from google.cloud import bigquery
 
-# ─── CONFIGURATION ───────────────────────────────────────────────────────────────
-PROJECT_ID  = os.getenv("GCP_PROJECT", "tradesmith-458506")
-BQ_DATASET  = "raw_market"
-FMP_API_KEY = os.environ["FMP_API_KEY"]
-FMP_BASE    = "https://financialmodelingprep.com/api/v3"
-CSV_FILE    = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
-MAX_TICKERS = 250
-# ────────────────────────────────────────────────────────────────────────────────
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Load Wilshire 5000 tickers, then ingest quotes & fundamentals into BigQuery"
+    )
+    p.add_argument(
+        "--fmp-api-key",
+        default=os.getenv("FMP_API_KEY"),
+        help="FinancialModelingPrep API key (or set FMP_API_KEY env)"
+    )
+    p.add_argument(
+        "--project-id",
+        default=os.getenv("GCP_PROJECT"),
+        help="GCP Project ID (or set GCP_PROJECT env)"
+    )
+    p.add_argument(
+        "--dataset",
+        default="raw_market",
+        help="BigQuery dataset name"
+    )
+    p.add_argument(
+        "--csv-file",
+        default=os.path.join(os.path.dirname(__file__), "wilshire_5000.csv"),
+        help="Path to CSV file listing tickers (header 'symbol')"
+    )
+    p.add_argument(
+        "--max-tickers",
+        type=int,
+        default=250,
+        help="Number of tickers to ingest quotes/fundamentals for"
+    )
+    args = p.parse_args()
+    if not args.fmp_api_key:
+        p.error("FMP API key required: pass --fmp-api-key or set FMP_API_KEY")
+    if not args.project_id:
+        p.error("GCP project ID required: pass --project-id or set GCP_PROJECT")
+    return args
 
-# Initialize BigQuery client
-bq = bigquery.Client(project=PROJECT_ID)
-
-def load_wilshire_symbols(csv_path):
-    """Read Wilshire 5000 symbols from CSV. Expects header row with 'symbol' column."""
-    symbols = []
-    with open(csv_path, newline='') as f:
+def load_symbols(csv_path):
+    """Read tickers from CSV; expects a 'symbol' column in header."""
+    syms = []
+    with open(csv_path, newline="") as f:
         reader = csv.reader(f)
         header = next(reader)
         try:
@@ -32,81 +58,85 @@ def load_wilshire_symbols(csv_path):
         except ValueError:
             idx = 0
         for row in reader:
-            sym = row[idx].strip().upper()
-            if sym:
-                symbols.append(sym)
-    return symbols
+            s = row[idx].strip().upper()
+            if s:
+                syms.append(s)
+    return syms
 
-def write_symbols(symbols):
-    """Stream the list of symbols into raw_market.symbols."""
-    table_id = f"{PROJECT_ID}.{BQ_DATASET}.symbols"
+def write_symbols(bq, project, dataset, symbols):
+    """Stream symbol list into raw_market.symbols."""
+    table_id = f"{project}.{dataset}.symbols"
     rows = [{"symbol": s, "name": "", "exchange": ""} for s in symbols]
-    print(f"Inserting {len(rows)} Wilshire symbols into {table_id}…")
-    errors = bq.insert_rows_json(table_id, rows)
-    if errors:
-        print("⚠️ Symbol insert errors:", errors)
+    print(f"Inserting {len(rows)} symbols into {table_id} …")
+    errs = bq.insert_rows_json(table_id, rows)
+    if errs:
+        print("⚠️ Symbol insert errors:", errs)
     else:
-        print("✅ Symbols loaded.")
+        print("✅ Symbols loaded")
 
-def ingest_quotes(tickers):
-    """Fetch latest quote for each ticker and write to quotes_intraday."""
-    table_id = f"{PROJECT_ID}.{BQ_DATASET}.quotes_intraday"
+def ingest_quotes(bq, project, dataset, tickers, api_key):
+    """Fetch latest quote per ticker, load into quotes_intraday."""
+    table_id = f"{project}.{dataset}.quotes_intraday"
     rows = []
     for t in tickers:
-        url = f"{FMP_BASE}/quote/{t}?apikey={FMP_API_KEY}"
-        resp = requests.get(url); resp.raise_for_status()
-        data = resp.json()
+        url = f"https://financialmodelingprep.com/api/v3/quote/{t}?apikey={api_key}"
+        r = requests.get(url); r.raise_for_status()
+        data = r.json()
         if data:
             q = data[0]
             rows.append({
                 "ticker": t,
-                "ts":      q["timestamp"],   # BigQuery will parse UNIX seconds
+                "ts":      q["timestamp"],
                 "price":   q["price"],
                 "volume":  q["volume"]
             })
-        time.sleep(0.1)  # throttle
-    print(f"Inserting {len(rows)} quotes into {table_id}…")
-    errors = bq.insert_rows_json(table_id, rows)
-    if errors:
-        print("⚠️ Quote insert errors:", errors)
+        time.sleep(0.1)
+    print(f"Inserting {len(rows)} quotes into {table_id} …")
+    errs = bq.insert_rows_json(table_id, rows)
+    if errs:
+        print("⚠️ Quote insert errors:", errs)
     else:
-        print("✅ Quotes loaded.")
+        print("✅ Quotes loaded")
 
-def ingest_fundamentals(tickers):
-    """Fetch company profile per ticker and write raw JSON into fundamentals_daily."""
-    table_id = f"{PROJECT_ID}.{BQ_DATASET}.fundamentals_daily"
+def ingest_fundamentals(bq, project, dataset, tickers, api_key):
+    """Fetch profile per ticker, load into fundamentals_daily."""
+    table_id = f"{project}.{dataset}.fundamentals_daily"
     rows = []
     for t in tickers:
-        url = f"{FMP_BASE}/profile/{t}?apikey={FMP_API_KEY}"
-        resp = requests.get(url); resp.raise_for_status()
-        data = resp.json()
+        url = f"https://financialmodelingprep.com/api/v3/profile/{t}?apikey={api_key}"
+        r = requests.get(url); r.raise_for_status()
+        data = r.json()
         if data:
-            profile = data[0]
+            prof = data[0]
             rows.append({
                 "ticker":       t,
-                "as_of_date":   profile.get("priceDate"),  
-                "json_payload": profile
+                "as_of_date":   prof.get("priceDate"),
+                "json_payload": prof
             })
         time.sleep(0.1)
-    print(f"Inserting {len(rows)} fundamentals into {table_id}…")
-    errors = bq.insert_rows_json(table_id, rows)
-    if errors:
-        print("⚠️ Fundamentals insert errors:", errors)
+    print(f"Inserting {len(rows)} fundamentals into {table_id} …")
+    errs = bq.insert_rows_json(table_id, rows)
+    if errs:
+        print("⚠️ Fundamentals insert errors:", errs)
     else:
-        print("✅ Fundamentals loaded.")
+        print("✅ Fundamentals loaded")
 
 def main():
-    # 1) Load and write Wilshire symbols
-    symbols = load_wilshire_symbols(CSV_FILE)
-    write_symbols(symbols)
+    args = parse_args()
 
-    # 2) Take first MAX_TICKERS for detailed ingestion
-    tickers = symbols[:MAX_TICKERS]
-    print(f"Processing quotes & fundamentals for first {len(tickers)} tickers…")
+    # BigQuery client
+    bq = bigquery.Client(project=args.project_id)
 
-    # 3) Ingest quotes and fundamentals
-    ingest_quotes(tickers)
-    ingest_fundamentals(tickers)
+    # 1) Load & write Wilshire symbols
+    symbols = load_symbols(args.csv_file)
+    write_symbols(bq, args.project_id, args.dataset, symbols)
+
+    # 2) Restrict to first N tickers for detailed ingest
+    tickers = symbols[: args.max_tickers]
+    print(f"Processing quotes & fundamentals for {len(tickers)} tickers…")
+
+    ingest_quotes(bq, args.project_id, args.dataset, tickers, args.fmp_api_key)
+    ingest_fundamentals(bq, args.project_id, args.dataset, tickers, args.fmp_api_key)
 
 if __name__ == "__main__":
     main()
