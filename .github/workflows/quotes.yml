@@ -1,18 +1,34 @@
-# .github/workflows/quotes.yml
 name: Intraday Quotes
+
 on:
   schedule:
-    - cron: "*/10 13-20 * * MON-FRI"   # every 10 min between 13:00–20:00 UTC
-    - cron: "*/30 8-12,20-23 * * MON-FRI"
+    # Every 10 min during the core market window
+    - cron: '*/10 13-20 * * 1-5'
+    # Every 30 min in off-peak pre/post-market
+    - cron: '*/30 8-12 * * 1-5'
+    - cron: '*/30 20-23 * * 1-5'
+
 jobs:
   quotes:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with: python-version: "3.9"
-      - run: pip install -r requirements.txt
-      - run: |
-          python scripts/quotes_pull.py
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account key
+        run: echo "${{ secrets.GCP_SA_KEY }}" > sa.json
+
+      - name: Run quotes pull
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY_PATH }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/sa.json
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+        run: python scripts/quotes_pull.py
