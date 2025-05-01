@@ -8,25 +8,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
       - name: Write service account key
         run: |
-          cat <<EOF > sa.json
-          ${{ secrets.GCP_SA_KEY }}
-          EOF
+          cat << 'EOF' > sa.json
+${{ secrets.GCP_SA_KEY }}
+EOF
 
       - name: Run quotes pull
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/sa.json
-          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          GCP_PROJECT:               ${{ secrets.GCP_PROJECT }}
         run: python scripts/quotes_pull.py
