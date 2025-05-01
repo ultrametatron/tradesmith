@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Phase 2: Ingest Wilshire 5000 symbols + quotes & fundamentals (first 250 tickers),
-explicitly loading service-account credentials from sa.json so no ADC errors,
-and batching fundamentals in one shot (up to MAX_TICKERS) with JSON payloads as strings.
+Phase 2: Ingest Wilshire 5000 symbols + quotes & fundamentals,
+explicitly loading service-account credentials from sa.json,
+quoting first 250 tickers, and batching fundamentals for all symbols
+in large chunks to minimize requests.
 """
 
 import os
@@ -14,16 +15,14 @@ from google.cloud import bigquery, secretmanager_v1
 from google.oauth2 import service_account
 
 # ─── CONFIG ─────────────────────────────────────────────────────────────
-PROJECT      = os.getenv("GCP_PROJECT", "tradesmith-458506")
-DATASET      = "raw_market"
-CSV_FILE     = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
-MAX_TICKERS  = 250                       # number of tickers to fetch in detail
-FMP_BASE     = "https://financialmodelingprep.com/api/v3"
-SA_JSON_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "sa.json")
-FMP_SECRET   = f"projects/{PROJECT}/secrets/FMP_API_KEY/versions/latest"
-# We’ll batch fundamentals up to MAX_TICKERS in a single call
-# FMP supports comma-separated lists; adjust if you discover a different limit.
-BATCH_SIZE   = MAX_TICKERS              
+PROJECT               = os.getenv("GCP_PROJECT", "tradesmith-458506")
+DATASET               = "raw_market"
+CSV_FILE              = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
+MAX_QUOTE_TICKERS     = 250        # number of tickers to fetch intraday for
+FUNDAMENTAL_BATCH     = 1000       # chunk size for bulk fundamentals calls
+FMP_BASE              = "https://financialmodelingprep.com/api/v3"
+SA_JSON_PATH          = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "sa.json")
+FMP_SECRET_RESOURCE   = f"projects/{PROJECT}/secrets/FMP_API_KEY/versions/latest"
 # ────────────────────────────────────────────────────────────────────────
 
 def load_credentials():
@@ -35,12 +34,12 @@ def load_credentials():
 def get_fmp_key(creds):
     """Fetch the FMP API key from Secret Manager."""
     sm = secretmanager_v1.SecretManagerServiceClient(credentials=creds)
-    resp = sm.access_secret_version(name=FMP_SECRET)
+    resp = sm.access_secret_version(name=FMP_SECRET_RESOURCE)
     return resp.payload.data.decode("utf-8").strip()
 
 def load_symbols():
     """Read tickers from CSV; expects a 'symbol' column."""
-    syms = []
+    symbols = []
     with open(CSV_FILE, newline="") as f:
         reader = csv.reader(f)
         header = next(reader)
@@ -48,16 +47,16 @@ def load_symbols():
         for row in reader:
             s = row[idx].strip().upper()
             if s:
-                syms.append(s)
-    return syms
+                symbols.append(s)
+    return symbols
 
 def write_symbols(bq, symbols):
     """Stream the full CSV list into raw_market.symbols."""
     table = f"{PROJECT}.{DATASET}.symbols"
-    rows = [{"symbol":s, "name":"", "exchange":""} for s in symbols]
+    rows = [{"symbol": s, "name": "", "exchange": ""} for s in symbols]
     print(f"Inserting {len(rows)} symbols into {table}…")
     errs = bq.insert_rows_json(table, rows)
-    print("⚠️ Symbol insert errors:" , errs) if errs else print("✅ Symbols loaded")
+    print("⚠️ Symbol insert errors:", errs) if errs else print("✅ Symbols loaded")
 
 def ingest_quotes(bq, tickers, fmp_key):
     """Fetch latest quote per ticker and write into quotes_intraday."""
@@ -75,43 +74,46 @@ def ingest_quotes(bq, tickers, fmp_key):
                 "price":   q["price"],
                 "volume":  q["volume"]
             })
-        time.sleep(0.1)
+        time.sleep(0.1)  # throttle to avoid rate limits
     print(f"Inserting {len(rows)} quotes into {table}…")
     errs = bq.insert_rows_json(table, rows)
     print("⚠️ Quote insert errors:", errs) if errs else print("✅ Quotes loaded")
 
-def ingest_fundamentals(bq, tickers, fmp_key):
+def ingest_fundamentals(bq, symbols, fmp_key):
     """
-    Fetch company profiles in one bulk request (up to BATCH_SIZE tickers) and write
-    them as JSON strings into fundamentals_daily to avoid BigQuery JSON-type issues.
+    Fetch profiles in large batches and write them into fundamentals_daily.
+    We chunk the entire symbols list into FUNDAMENTAL_BATCH-size requests.
     """
     table = f"{PROJECT}.{DATASET}.fundamentals_daily"
     rows = []
-    # one batch up to BATCH_SIZE
-    batch = tickers[:BATCH_SIZE]
-    tickers_str = ",".join(batch)
-    url = f"{FMP_BASE}/profile/{tickers_str}?apikey={fmp_key}"
+    for start in range(0, len(symbols), FUNDAMENTAL_BATCH):
+        batch = symbols[start:start+FUNDAMENTAL_BATCH]
+        tickers_str = ",".join(batch)
+        url = f"{FMP_BASE}/profile/{tickers_str}?apikey={fmp_key}"
 
-    # exponential backoff for 429
-    for attempt in range(5):
-        resp = requests.get(url)
-        if resp.status_code == 429:
-            wait = (2 ** attempt) * 5
-            print(f"⚠️ 429 rate-limit, sleeping {wait}s…")
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        data = resp.json()
-        break
-    else:
-        raise RuntimeError("Exceeded retry attempts fetching fundamentals batch")
+        # exponential backoff for 429
+        for attempt in range(5):
+            resp = requests.get(url)
+            if resp.status_code == 429:
+                wait = (2 ** attempt) * 5
+                print(f"⚠️ 429 on fundamentals batch {start//FUNDAMENTAL_BATCH+1}, sleeping {wait}s…")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        else:
+            raise RuntimeError(f"Failed to fetch fundamentals for batch starting at {start}")
 
-    for p in data:
-        rows.append({
-            "ticker":       p.get("symbol"),
-            "as_of_date":   p.get("priceDate"),
-            "json_payload": json.dumps(p)      # JSON as string for BigQuery JSON column
-        })
+        for p in data:
+            # store payload as JSON string for BigQuery JSON column
+            rows.append({
+                "ticker":       p.get("symbol"),
+                "as_of_date":   p.get("priceDate"),
+                "json_payload": json.dumps(p)
+            })
+
+        time.sleep(1)  # small pause between batches
 
     print(f"Inserting {len(rows)} fundamentals into {table}…")
     errs = bq.insert_rows_json(table, rows)
@@ -125,10 +127,14 @@ def main():
     symbols = load_symbols()
     write_symbols(bq_client, symbols)
 
-    tickers = symbols[:MAX_TICKERS]
-    print(f"Processing quotes & fundamentals for {len(tickers)} tickers…")
-    ingest_quotes(bq_client, tickers, fmp_key)
-    ingest_fundamentals(bq_client, tickers, fmp_key)
+    # intraday quotes only for top MAX_QUOTE_TICKERS
+    quote_tickers = symbols[:MAX_QUOTE_TICKERS]
+    print(f"Processing quotes for {len(quote_tickers)} tickers…")
+    ingest_quotes(bq_client, quote_tickers, fmp_key)
+
+    # fundamentals for ALL symbols, batched
+    print(f"Processing fundamentals for {len(symbols)} tickers in batches of {FUNDAMENTAL_BATCH}…")
+    ingest_fundamentals(bq_client, symbols, fmp_key)
 
 if __name__ == "__main__":
     main()
