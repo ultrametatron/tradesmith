@@ -1,0 +1,18 @@
+# .github/workflows/quotes.yml
+name: Intraday Quotes
+on:
+  schedule:
+    - cron: "*/10 13-20 * * MON-FRI"   # every 10 min between 13:00–20:00 UTC
+    - cron: "*/30 8-12,20-23 * * MON-FRI"
+jobs:
+  quotes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with: python-version: "3.9"
+      - run: pip install -r requirements.txt
+      - run: |
+          python scripts/quotes_pull.py
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY_PATH }}
