@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Phase 2: Ingest Wilshire 5000 symbols + quotes & fundamentals (first 250 tickers),
-explicitly loading service-account credentials from sa.json so no ADC errors.
+explicitly loading service-account credentials from sa.json so no ADC errors,
+and batching fundamentals in one shot (up to MAX_TICKERS) with JSON payloads as strings.
 """
 
 import os
 import time
 import csv
+import json
 import requests
 from google.cloud import bigquery, secretmanager_v1
 from google.oauth2 import service_account
@@ -15,10 +17,13 @@ from google.oauth2 import service_account
 PROJECT      = os.getenv("GCP_PROJECT", "tradesmith-458506")
 DATASET      = "raw_market"
 CSV_FILE     = os.path.join(os.path.dirname(__file__), "wilshire_5000.csv")
-MAX_TICKERS  = 250
+MAX_TICKERS  = 250                       # number of tickers to fetch in detail
 FMP_BASE     = "https://financialmodelingprep.com/api/v3"
 SA_JSON_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "sa.json")
 FMP_SECRET   = f"projects/{PROJECT}/secrets/FMP_API_KEY/versions/latest"
+# We’ll batch fundamentals up to MAX_TICKERS in a single call
+# FMP supports comma-separated lists; adjust if you discover a different limit.
+BATCH_SIZE   = MAX_TICKERS              
 # ────────────────────────────────────────────────────────────────────────
 
 def load_credentials():
@@ -29,8 +34,8 @@ def load_credentials():
 
 def get_fmp_key(creds):
     """Fetch the FMP API key from Secret Manager."""
-    sm_client = secretmanager_v1.SecretManagerServiceClient(credentials=creds)
-    resp = sm_client.access_secret_version(name=FMP_SECRET)
+    sm = secretmanager_v1.SecretManagerServiceClient(credentials=creds)
+    resp = sm.access_secret_version(name=FMP_SECRET)
     return resp.payload.data.decode("utf-8").strip()
 
 def load_symbols():
@@ -46,18 +51,15 @@ def load_symbols():
                 syms.append(s)
     return syms
 
-def write_symbols(bq_client, symbols):
+def write_symbols(bq, symbols):
     """Stream the full CSV list into raw_market.symbols."""
     table = f"{PROJECT}.{DATASET}.symbols"
-    rows = [{"symbol": s, "name": "", "exchange": ""} for s in symbols]
+    rows = [{"symbol":s, "name":"", "exchange":""} for s in symbols]
     print(f"Inserting {len(rows)} symbols into {table}…")
-    errs = bq_client.insert_rows_json(table, rows)
-    if errs:
-        print("⚠️ Symbol insert errors:", errs)
-    else:
-        print("✅ Symbols loaded")
+    errs = bq.insert_rows_json(table, rows)
+    print("⚠️ Symbol insert errors:" , errs) if errs else print("✅ Symbols loaded")
 
-def ingest_quotes(bq_client, tickers, fmp_key):
+def ingest_quotes(bq, tickers, fmp_key):
     """Fetch latest quote per ticker and write into quotes_intraday."""
     table = f"{PROJECT}.{DATASET}.quotes_intraday"
     rows = []
@@ -75,66 +77,56 @@ def ingest_quotes(bq_client, tickers, fmp_key):
             })
         time.sleep(0.1)
     print(f"Inserting {len(rows)} quotes into {table}…")
-    errs = bq_client.insert_rows_json(table, rows)
-    if errs:
-        print("⚠️ Quote insert errors:", errs)
-    else:
-        print("✅ Quotes loaded")
+    errs = bq.insert_rows_json(table, rows)
+    print("⚠️ Quote insert errors:", errs) if errs else print("✅ Quotes loaded")
 
-def ingest_fundamentals(bq_client, tickers, fmp_key):
+def ingest_fundamentals(bq, tickers, fmp_key):
     """
-    Fetch company profiles in batches (bulk endpoint) and write into fundamentals_daily.
-    Reduces rate-limit errors by batching and doing exponential backoff on 429s.
+    Fetch company profiles in one bulk request (up to BATCH_SIZE tickers) and write
+    them as JSON strings into fundamentals_daily to avoid BigQuery JSON-type issues.
     """
     table = f"{PROJECT}.{DATASET}.fundamentals_daily"
     rows = []
-    batch_size = 50
-    for start in range(0, len(tickers), batch_size):
-        batch = tickers[start:start+batch_size]
-        tickers_str = ",".join(batch)
-        url = f"{FMP_BASE}/profile/{tickers_str}?apikey={fmp_key}"
+    # one batch up to BATCH_SIZE
+    batch = tickers[:BATCH_SIZE]
+    tickers_str = ",".join(batch)
+    url = f"{FMP_BASE}/profile/{tickers_str}?apikey={fmp_key}"
 
-        # retry loop for 429s
-        for attempt in range(5):
-            resp = requests.get(url)
-            if resp.status_code == 429:
-                wait = (2 ** attempt) * 5
-                print(f"⚠️ 429 on batch {start//batch_size+1}, sleeping {wait}s…")
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            break
-        else:
-            raise RuntimeError(f"Failed to fetch profiles for batch starting at {start}")
+    # exponential backoff for 429
+    for attempt in range(5):
+        resp = requests.get(url)
+        if resp.status_code == 429:
+            wait = (2 ** attempt) * 5
+            print(f"⚠️ 429 rate-limit, sleeping {wait}s…")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        break
+    else:
+        raise RuntimeError("Exceeded retry attempts fetching fundamentals batch")
 
-        for profile in data:
-            rows.append({
-                "ticker":       profile.get("symbol"),
-                "as_of_date":   profile.get("priceDate"),
-                "json_payload": profile
-            })
-
-        time.sleep(1)  # pause between batches
+    for p in data:
+        rows.append({
+            "ticker":       p.get("symbol"),
+            "as_of_date":   p.get("priceDate"),
+            "json_payload": json.dumps(p)      # JSON as string for BigQuery JSON column
+        })
 
     print(f"Inserting {len(rows)} fundamentals into {table}…")
-    errs = bq_client.insert_rows_json(table, rows)
-    if errs:
-        print("⚠️ Fundamentals insert errors:", errs)
-    else:
-        print("✅ Fundamentals loaded")
+    errs = bq.insert_rows_json(table, rows)
+    print("⚠️ Fundamentals insert errors:", errs) if errs else print("✅ Fundamentals loaded")
 
 def main():
-    creds = load_credentials()
+    creds     = load_credentials()
     bq_client = bigquery.Client(project=PROJECT, credentials=creds)
-    fmp_key = get_fmp_key(creds)
+    fmp_key   = get_fmp_key(creds)
 
     symbols = load_symbols()
     write_symbols(bq_client, symbols)
 
     tickers = symbols[:MAX_TICKERS]
     print(f"Processing quotes & fundamentals for {len(tickers)} tickers…")
-
     ingest_quotes(bq_client, tickers, fmp_key)
     ingest_fundamentals(bq_client, tickers, fmp_key)
 
