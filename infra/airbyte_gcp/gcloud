@@ -1,0 +1,17 @@
+# ---- VARIABLES YOU CAN OVERRIDE ----
+PROJECT_ID="my‑tradesmith‑prd"
+ZONE="australia‑southeast1‑b"
+VM_NAME="airbyte‑ingest‑vm"
+MACHINE="e2‑standard‑4"        # 4 vCPU, 16 GB RAM ~US$0.18/h
+IMG_FAMILY="ubuntu‑2204‑lts"   # Ubuntu has official Docker repo
+DISK_GB=50
+SERVICE_ACCT="airbyte‑ingest@$PROJECT_ID.iam.gserviceaccount.com"
+STARTUP_SCRIPT="gs://$PROJECT_ID‑scripts/install_docker_airbyte.sh"
+# ------------------------------------
+
+gcloud compute instances create "$VM_NAME" \
+  --project="$PROJECT_ID" --zone="$ZONE" \
+  --machine-type="$MACHINE" --image-family="$IMG_FAMILY" --image-project="ubuntu-os-cloud" \
+  --boot-disk-size="$DISK_GB" --boot-disk-type=pd-ssd \
+  --service-account="$SERVICE_ACCT" --scopes="https://www.googleapis.com/auth/cloud-platform" \
+  --metadata=startup-script-url="$STARTUP_SCRIPT"
